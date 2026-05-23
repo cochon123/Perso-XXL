@@ -4,20 +4,30 @@
   "description": "AI-personalized website layouts, starting with YouTube.",
   "version": "0.1.0",
   "permissions": ["activeTab", "storage"],
-  "host_permissions": ["https://www.youtube.com/*", "https://openrouter.ai/*", "http://localhost:8787/*"],
+  "host_permissions": ["http://*/*", "https://*/*", "https://openrouter.ai/*", "http://localhost:8787/*"],
   "background": {
     "service_worker": "background/service-worker.js"
   },
   "action": {
     "default_title": "Perso XXL"
   },
+  "commands": {
+    "open-command-palette": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Open Perso XXL command palette"
+    }
+  },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": [
         "config/env.js",
         "content/logger.js",
         "content/youtube-adapter.js",
+        "content/focused-dom.js",
         "content/executor.js",
         "content/ai-client.js",
         "content/content.js"

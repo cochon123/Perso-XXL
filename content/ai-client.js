@@ -2,25 +2,15 @@ window.PersoAiClient = (() => {
   const log = window.PersoLogger;
   const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
   const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
-  const ALLOWED_TARGETS = [
-    "app",
-    "masthead",
-    "sidebar",
-    "homeFeed",
-    "videoCard",
-    "videoTitle",
-    "thumbnail",
-    "chips",
-    "shortsShelf",
-    "watchPage",
-    "player",
-    "recommendations",
-    "comments"
-  ];
   const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css"]);
   const ALLOWED_STYLE_KEYS = new Set([
     "background",
     "backgroundColor",
+    "backgroundImage",
+    "backgroundSize",
+    "backgroundPosition",
+    "backgroundRepeat",
+    "backgroundAttachment",
     "border",
     "borderBottom",
     "borderColor",
@@ -52,40 +42,134 @@ window.PersoAiClient = (() => {
     "aspectRatio"
   ]);
 
+  const DISCOVERY_SCHEMA_HINT = {
+    intent: "restyle_existing_elements",
+    targetConcepts: ["thumbnail", "image"],
+    candidateKinds: ["image", "media"],
+    domCollectionStrategy: {
+      includeSelectors: ["img", "a img", "[class*='thumbnail' i]"],
+      includeAncestors: 3,
+      includeVisibleOnly: true,
+      maxCandidates: 80
+    },
+    expectedStyles: ["borderRadius", "overflow"]
+  };
+
   const TRANSFORM_SCHEMA_HINT = {
-    version: "1.0",
-    site: "youtube.com",
-    theme: {
-      colors: {
-        background: "#111111",
-        surface: "#1F1F1F",
-        surfaceElevated: "#2A2A2A",
-        text: "#F5F5F5",
-        textMuted: "#B8B8B8",
-        accent: "#D99A4E"
-      },
-      typography: {
-        fontFamily: "Inter, Arial, system-ui, sans-serif",
-        baseFontSize: "15px"
-      },
-      radius: "12px",
-      density: "comfortable"
+    version: "1.1",
+    site: {
+      hostname: "example.com",
+      adapter: "generic"
+    },
+    sourcePrompt: "Make thumbnails circular",
+    targetMap: {
+      thumbnail: {
+        source: "focused-dom",
+        selectors: ["img", "a img"],
+        confidence: 0.75
+      }
     },
     rules: [
       {
-        id: "video-card-style",
+        id: "round-thumbnails",
         type: "style",
-        target: "videoCard",
+        targetRef: "thumbnail",
         styles: {
-          backgroundColor: "var(--perso-surface)",
-          borderRadius: "var(--perso-radius)",
-          padding: "10px"
+          borderRadius: "50%",
+          overflow: "hidden"
         }
       }
     ]
   };
 
-  async function generateTransformPlan({ profileNotes, domSummary, previousPlan = null, validationErrors = [] }) {
+  async function discoverModificationScope({ prompt, pageContext, availableAssets = [] }) {
+    const payload = await requestJson({
+      taskName: "target-discovery",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are the target discovery stage for a browser extension.",
+            "Given a user prompt and lightweight page context, decide which visible page elements matter.",
+            "Do not create style rules.",
+            "Return only valid JSON matching the provided schema shape.",
+            "Prefer focused collection strategies over broad full-page collection."
+          ].join(" ")
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            prompt,
+            pageContext,
+            availableAssets,
+            schemaExample: DISCOVERY_SCHEMA_HINT,
+            allowedCandidateKinds: ["image", "media", "card", "button", "control", "text", "layout", "region"]
+          })
+        }
+      ]
+    });
+
+    return normalizeDiscovery(payload, prompt);
+  }
+
+  async function generateTransformPlan({ prompt, discovery, focusedDom, availableAssets = [], previousPlan = null, validationErrors = [] }) {
+    const availableTargetRefs = Object.keys(focusedDom?.targetMap || {});
+    const targetMap = focusedDom?.targetMap || {};
+    const payload = await requestJson({
+      taskName: previousPlan ? "plan-repair" : "plan-generation",
+      temperature: 0.35,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You generate safe declarative website transform plans.",
+            "Return only valid JSON.",
+            "Never include JavaScript, event handlers, external URLs, network requests, or raw arbitrary selectors.",
+            "Use targetRef values from availableTargetRefs whenever possible.",
+            "If the user asks for one specific change, return only the minimal rules needed for that change.",
+            "For broad theme requests, create 4 to 8 conservative rules.",
+            "Use only allowed style properties.",
+            "Do not invent targetRefs that are not in availableTargetRefs.",
+            "If an attached image should be used, set backgroundImage to asset:<assetId>, for example asset:uploadedImage.",
+            "Never use local filesystem paths in CSS."
+          ].join(" ")
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task: previousPlan
+              ? "Repair this transform plan so it passes validation. Return the full corrected plan."
+              : "Create a transform plan for the user's prompt using the focused DOM.",
+            prompt,
+            discovery,
+            focusedDom,
+            availableAssets,
+            availableTargetRefs,
+            targetMap,
+            allowedRuleTypes: ["css", "style", "visibility", "attribute"],
+            allowedStyleKeys: ALLOWED_STYLE_KEYS_LIST,
+            schemaExample: TRANSFORM_SCHEMA_HINT,
+            previousPlan,
+            validationErrors
+          })
+        }
+      ]
+    });
+
+    return {
+      ...payload,
+      version: payload.version || "1.1",
+      sourcePrompt: payload.sourcePrompt || prompt,
+      site: payload.site || {
+        hostname: location.hostname,
+        adapter: location.hostname.includes("youtube.com") ? "youtube" : "generic"
+      },
+      targetMap: payload.targetMap || targetMap
+    };
+  }
+
+  async function requestJson({ taskName, messages, temperature }) {
     const apiKey = window.PersoEnv?.OPENROUTER_API_KEY;
     const model = window.PersoEnv?.OPENROUTER_MODEL || DEFAULT_MODEL;
 
@@ -94,11 +178,9 @@ window.PersoAiClient = (() => {
     }
 
     log.info("openrouter.request.started", {
+      taskName,
       model,
-      profileNotesLength: profileNotes?.length || 0,
-      pageType: domSummary?.pageType,
-      targetCount: domSummary?.targets?.length || 0,
-      isRepair: Boolean(previousPlan)
+      messageCount: messages.length
     });
 
     const startedAt = performance.now();
@@ -112,39 +194,9 @@ window.PersoAiClient = (() => {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.4,
+        temperature,
         response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: [
-              "You generate safe declarative website transform plans.",
-              "Return only valid JSON.",
-              "Never include JavaScript, event handlers, external URLs, network requests, or selectors.",
-              "Rules must target only the allowed semantic YouTube targets.",
-              "Keep the first plan conservative and reversible.",
-              "If the user asks for one specific change, return only the minimal rules needed for that change.",
-              "For broad personality or theme requests, create 4 to 8 rules that visibly change the page theme, masthead, feed, cards, and optional distraction controls.",
-              "For thumbnail shape changes, target thumbnail and include borderRadius plus overflow hidden.",
-              "Prefer CSS properties from this list only: backgroundColor, color, border, borderColor, borderRadius, boxShadow, fontFamily, fontSize, fontWeight, margin, padding, opacity, overflow, aspectRatio."
-            ].join(" ")
-          },
-          {
-            role: "user",
-            content: JSON.stringify({
-              task: previousPlan
-                ? "Repair this YouTube layout transform plan so it passes validation. Return the full corrected plan."
-                : "Create a YouTube layout transform plan matching this user's personality and preferences.",
-              allowedTargets: ALLOWED_TARGETS,
-              allowedRuleTypes: ["css", "style", "visibility", "attribute"],
-              schemaExample: TRANSFORM_SCHEMA_HINT,
-              profileNotes,
-              domSummary,
-              previousPlan,
-              validationErrors
-            })
-          }
-        ]
+        messages
       })
     });
 
@@ -175,8 +227,9 @@ window.PersoAiClient = (() => {
     return JSON.parse(content);
   }
 
-  function validateTransformPlan(input) {
+  function validateTransformPlan(input, focusedDom = null) {
     const errors = [];
+    const targetRefs = new Set(Object.keys(input?.targetMap || focusedDom?.targetMap || {}));
     log.info("plan.validation.started", {
       site: input?.site,
       ruleCount: Array.isArray(input?.rules) ? input.rules.length : null
@@ -186,15 +239,14 @@ window.PersoAiClient = (() => {
       return { ok: false, errors: ["Plan must be a JSON object."] };
     }
 
-    if (input.site !== "youtube.com") errors.push("Plan site must be youtube.com.");
-    if (!input.theme || typeof input.theme !== "object") errors.push("Plan must include a theme object.");
+    if (!input.site) errors.push("Plan must include site.");
 
     if (!Array.isArray(input.rules)) {
       errors.push("Plan must include a rules array.");
     } else if (input.rules.length > 30) {
       errors.push("Plan cannot contain more than 30 rules.");
     } else {
-      input.rules.forEach((rule, index) => validateRule(rule, index, errors));
+      input.rules.forEach((rule, index) => validateRule(rule, index, errors, targetRefs, input.assets || {}));
     }
 
     const result = { ok: errors.length === 0, errors };
@@ -202,17 +254,21 @@ window.PersoAiClient = (() => {
     return result;
   }
 
-  function validateRule(rule, index, errors) {
+  function validateRule(rule, index, errors, targetRefs, assets) {
     if (!rule || typeof rule !== "object" || Array.isArray(rule)) {
       errors.push(`Rule ${index} must be an object.`);
       return;
     }
 
     if (!ALLOWED_RULE_TYPES.has(rule.type)) errors.push(`Rule ${index} has unsupported type.`);
-    if (rule.selector) errors.push(`Rule ${index} uses a raw selector. Use semantic target instead.`);
+    if (rule.selector) errors.push(`Rule ${index} uses a raw selector. Use targetRef instead.`);
 
-    if (rule.type !== "css" && !ALLOWED_TARGETS.includes(rule.target)) {
-      errors.push(`Rule ${index} has unsupported target.`);
+    if (rule.type !== "css" && !rule.targetRef && !rule.target) {
+      errors.push(`Rule ${index} must include targetRef.`);
+    }
+
+    if (rule.targetRef && !targetRefs.has(rule.targetRef)) {
+      errors.push(`Rule ${index} references unknown targetRef ${rule.targetRef}.`);
     }
 
     if (rule.type === "style") {
@@ -224,6 +280,16 @@ window.PersoAiClient = (() => {
       Object.keys(rule.styles).forEach((key) => {
         if (!ALLOWED_STYLE_KEYS.has(key)) errors.push(`Rule ${index} uses unsupported style key ${key}.`);
       });
+
+      if (rule.styles.backgroundImage) {
+        const value = String(rule.styles.backgroundImage);
+        if (value.startsWith("asset:")) {
+          const assetId = value.slice("asset:".length);
+          if (!assets[assetId]) errors.push(`Rule ${index} references missing asset ${assetId}.`);
+        } else if (!/^none$/i.test(value)) {
+          errors.push(`Rule ${index} backgroundImage must use asset:<assetId>.`);
+        }
+      }
     }
 
     if (rule.type === "visibility" && !["hide", "show", "dim"].includes(rule.action)) {
@@ -243,5 +309,48 @@ window.PersoAiClient = (() => {
     }
   }
 
-  return { generateTransformPlan, validateTransformPlan };
+  function normalizeDiscovery(payload, prompt) {
+    const promptLower = prompt.toLowerCase();
+    const fallbackConcepts = /background/.test(promptLower)
+      ? ["background", "page"]
+      : /thumb|image|photo|picture|avatar/.test(promptLower)
+      ? ["thumbnail", "image"]
+      : ["selection"];
+    const fallbackKinds = /background/.test(promptLower) ? ["layout", "region"] : ["image", "media"];
+
+    return {
+      intent: payload.intent || "restyle_existing_elements",
+      targetConcepts: Array.isArray(payload.targetConcepts) && payload.targetConcepts.length ? payload.targetConcepts : fallbackConcepts,
+      candidateKinds: Array.isArray(payload.candidateKinds) && payload.candidateKinds.length ? payload.candidateKinds : fallbackKinds,
+      domCollectionStrategy: {
+        includeSelectors: getDiscoverySelectors(payload, promptLower),
+        includeAncestors: payload.domCollectionStrategy?.includeAncestors ?? 3,
+        includeVisibleOnly: payload.domCollectionStrategy?.includeVisibleOnly !== false,
+        maxCandidates: payload.domCollectionStrategy?.maxCandidates || 80
+      },
+      expectedStyles: payload.expectedStyles || []
+    };
+  }
+
+  const ALLOWED_STYLE_KEYS_LIST = Array.from(ALLOWED_STYLE_KEYS);
+
+  function getDiscoverySelectors(payload, promptLower) {
+    const selectors = payload.domCollectionStrategy?.includeSelectors || payload.includeSelectors || [];
+    if (/background/.test(promptLower)) {
+      return Array.from(new Set([
+        "html",
+        "body",
+        "main",
+        "#app",
+        "#root",
+        "ytd-app",
+        "ytd-page-manager#page-manager",
+        ...selectors
+      ]));
+    }
+
+    return selectors;
+  }
+
+  return { discoverModificationScope, generateTransformPlan, validateTransformPlan };
 })();

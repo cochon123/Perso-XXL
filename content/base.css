@@ -16,13 +16,14 @@ html[data-perso-xxl-enabled="true"] {
   display: grid;
   font-family: Inter, Arial, system-ui, sans-serif;
   gap: 12px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 72px);
   overflow: auto;
-  padding: 14px;
+  padding: 16px;
   position: fixed;
-  right: 16px;
-  top: 72px;
-  width: min(380px, calc(100vw - 32px));
+  left: 50%;
+  top: 20%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
   z-index: 2147483647;
 }
 
@@ -57,9 +58,43 @@ html[data-perso-xxl-enabled="true"] {
   color: #f4f4f5;
   font: inherit;
   line-height: 1.4;
+  min-height: 104px;
   padding: 10px;
   resize: vertical;
   width: 100%;
+}
+
+.perso-xxl-asset-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-height: 36px;
+}
+
+.perso-xxl-file-button {
+  align-items: center;
+  background: #2b2b31;
+  border-radius: 8px;
+  color: #f4f4f5;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.perso-xxl-file-button input {
+  display: none;
+}
+
+#perso-xxl-panel [data-role="asset-status"] {
+  color: #b8b8c2;
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #perso-xxl-panel button {
@@ -101,7 +136,7 @@ html[data-perso-xxl-enabled="true"] {
 .perso-xxl-actions {
   display: grid;
   gap: 8px;
-  grid-template-columns: 1fr 100px 82px;
+  grid-template-columns: 1fr 112px 88px;
 }
 
 #perso-xxl-panel button.danger {

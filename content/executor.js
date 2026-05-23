@@ -27,12 +27,12 @@ window.PersoExecutor = (() => {
         if (rule.type === "css") {
           cssRules.push(rule.css);
         } else if (rule.type === "style") {
-          targetCssRules.push(...buildTargetCssRules(rule));
-          totalMatched += applyStyleRule(rule, adapter);
+          targetCssRules.push(...buildTargetCssRules(rule, plan));
+          totalMatched += applyStyleRule(rule, adapter, plan);
         } else if (rule.type === "visibility") {
-          totalMatched += applyVisibilityRule(rule, adapter);
+          totalMatched += applyVisibilityRule(rule, adapter, plan);
         } else if (rule.type === "attribute") {
-          totalMatched += applyAttributeRule(rule, adapter);
+          totalMatched += applyAttributeRule(rule, adapter, plan);
         }
       } catch (error) {
         log.warn("executor.rule.failed", { ruleId: rule?.id, ruleType: rule?.type, error });
@@ -89,11 +89,11 @@ window.PersoExecutor = (() => {
     upsertStyle(TARGET_STYLE_ID, cssRules.join("\n"));
   }
 
-  function applyStyleRule(rule, adapter) {
-    const elements = adapter.queryTarget(rule.target);
+  function applyStyleRule(rule, adapter, plan) {
+    const elements = resolveRuleElements(rule, adapter, plan);
     log.debug("executor.rule.style", {
       ruleId: rule.id,
-      target: rule.target,
+      target: rule.targetRef || rule.target,
       matchCount: elements.length,
       matched: summarizeElements(elements),
       diagnostics: elements.length === 0 && rule.target === "thumbnail" ? adapter.getSelectorDiagnostics?.() : null
@@ -101,19 +101,20 @@ window.PersoExecutor = (() => {
     for (const element of elements) {
       rememberElement(element);
       mark(element, rule.id);
-      if (rule.target === "thumbnail") {
+      if (rule.target === "thumbnail" || /thumb|image|media/i.test(rule.targetRef || "")) {
         element.style.overflow = "hidden";
       }
       for (const [key, value] of Object.entries(rule.styles || {})) {
-        element.style[key] = value;
+        const resolvedValue = resolveStyleValue(key, value, plan);
+        if (resolvedValue) element.style[key] = resolvedValue;
       }
     }
     return elements.length;
   }
 
-  function applyVisibilityRule(rule, adapter) {
-    const elements = adapter.queryTarget(rule.target);
-    log.debug("executor.rule.visibility", { ruleId: rule.id, target: rule.target, action: rule.action, matchCount: elements.length });
+  function applyVisibilityRule(rule, adapter, plan) {
+    const elements = resolveRuleElements(rule, adapter, plan);
+    log.debug("executor.rule.visibility", { ruleId: rule.id, target: rule.targetRef || rule.target, action: rule.action, matchCount: elements.length });
     for (const element of elements) {
       rememberElement(element);
       mark(element, rule.id);
@@ -129,11 +130,11 @@ window.PersoExecutor = (() => {
     return elements.length;
   }
 
-  function applyAttributeRule(rule, adapter) {
-    const elements = adapter.queryTarget(rule.target);
+  function applyAttributeRule(rule, adapter, plan) {
+    const elements = resolveRuleElements(rule, adapter, plan);
     log.debug("executor.rule.attribute", {
       ruleId: rule.id,
-      target: rule.target,
+      target: rule.targetRef || rule.target,
       attribute: rule.attribute,
       value: rule.value,
       matchCount: elements.length
@@ -211,7 +212,8 @@ window.PersoExecutor = (() => {
     return value;
   }
 
-  function buildTargetCssRules(rule) {
+  function buildTargetCssRules(rule, plan) {
+    if (rule.targetRef) return buildTargetRefCssRule(rule, plan);
     if (rule.target !== "thumbnail") return [];
 
     const styles = normalizeThumbnailStyles(rule.styles || {});
@@ -249,6 +251,24 @@ window.PersoExecutor = (() => {
     return [`${selector} {\n${styles}\n}`];
   }
 
+  function buildTargetRefCssRule(rule, plan) {
+    const target = plan.targetMap?.[rule.targetRef];
+    const selectors = sanitizeSelectors(target?.selectors || []);
+    if (!selectors.length) return [];
+
+    const declarations = normalizeStyleDeclarations(rule.styles || {}, { forceImportant: true, plan });
+    if (!declarations) return [];
+
+    log.info("executor.target_ref.css.generated", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      selectorCount: selectors.length,
+      declarations
+    });
+
+    return [`${selectors.join(",\n")} {\n${declarations}\n}`];
+  }
+
   function normalizeThumbnailStyles(styles) {
     const declarations = [];
 
@@ -274,6 +294,71 @@ window.PersoExecutor = (() => {
     }
 
     return declarations.length > 0 ? declarations.join("\n") : "";
+  }
+
+  function normalizeStyleDeclarations(styles, options = {}) {
+    const important = options.forceImportant ? " !important" : "";
+    const declarations = [];
+
+    for (const [key, value] of Object.entries(styles)) {
+      const cssKey = camelToKebab(key);
+      if (!/^[a-z-]+$/.test(cssKey)) continue;
+      const resolvedValue = resolveStyleValue(key, value, options.plan);
+      if (!resolvedValue) continue;
+      declarations.push(`  ${cssKey}: ${resolvedValue}${important};`);
+
+      if (key === "borderRadius") {
+        declarations.push(`  overflow: hidden${important};`);
+      }
+    }
+
+    return declarations.length ? declarations.join("\n") : "";
+  }
+
+  function resolveRuleElements(rule, adapter, plan) {
+    if (rule.targetRef) {
+      const selectors = sanitizeSelectors(plan.targetMap?.[rule.targetRef]?.selectors || []);
+      return uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
+    }
+
+    return adapter.queryTarget(rule.target);
+  }
+
+  function sanitizeSelectors(selectors) {
+    return selectors.filter((selector) => {
+      if (typeof selector !== "string") return false;
+      if (selector.length > 180) return false;
+      if (/[{};]/.test(selector)) return false;
+      try {
+        document.querySelector(selector);
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    });
+  }
+
+  function uniqueElements(elements) {
+    return Array.from(new Set(elements));
+  }
+
+  function camelToKebab(value) {
+    return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+  }
+
+  function resolveStyleValue(key, value, plan) {
+    if (key === "backgroundImage" && typeof value === "string" && value.startsWith("asset:")) {
+      const assetId = value.slice("asset:".length);
+      const dataUrl = plan?.assets?.[assetId]?.dataUrl;
+      if (isSafeImageDataUrl(dataUrl)) return `url("${dataUrl}")`;
+      return "";
+    }
+
+    return safeCssValue(String(value), "");
+  }
+
+  function isSafeImageDataUrl(value) {
+    return typeof value === "string" && /^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(value);
   }
 
   function summarizeElements(elements) {
