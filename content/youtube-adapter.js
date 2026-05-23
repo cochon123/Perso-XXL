@@ -7,7 +7,17 @@ window.PersoYoutubeAdapter = {
     homeFeed: ["ytd-rich-grid-renderer", "#contents.ytd-rich-grid-renderer"],
     videoCard: ["ytd-rich-item-renderer", "ytd-video-renderer", "ytd-grid-video-renderer"],
     videoTitle: ["#video-title", "a#video-title-link", "yt-formatted-string#video-title"],
-    thumbnail: ["ytd-thumbnail", "a#thumbnail", "ytd-thumbnail img", "a#thumbnail img", "img.yt-core-image"],
+    thumbnail: [
+      "ytd-thumbnail",
+      "a#thumbnail",
+      "ytd-thumbnail img",
+      "a#thumbnail img",
+      "img.yt-core-image",
+      "ytd-rich-grid-media #thumbnail",
+      "ytd-rich-grid-media img",
+      "a[href^='/watch'] img",
+      "img[src*='ytimg.com']"
+    ],
     chips: ["ytd-feed-filter-chip-bar-renderer", "yt-chip-cloud-chip-renderer"],
     shortsShelf: ["ytd-rich-section-renderer", "ytd-reel-shelf-renderer"],
     watchPage: ["ytd-watch-flexy"],
@@ -28,6 +38,14 @@ window.PersoYoutubeAdapter = {
 
     const selectors = this.targets[target] || [];
     return uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
+  },
+  getSelectorDiagnostics() {
+    return {
+      thumbnail: THUMBNAIL_SELECTORS.map((selector) => ({
+        selector,
+        count: document.querySelectorAll(selector).length
+      }))
+    };
   },
   buildDomSummary() {
     const entries = Object.keys(this.targets).map((target) => {
@@ -96,9 +114,9 @@ function uniqueElements(elements) {
 }
 
 function queryThumbnailTargets() {
-  const cards = Array.from(document.querySelectorAll("ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer"));
+  const cards = Array.from(document.querySelectorAll("ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-rich-grid-media"));
   const scopedTargets = cards.flatMap((card) => {
-    const thumbnail = card.querySelector("ytd-thumbnail");
+    const thumbnail = card.querySelector("ytd-thumbnail, #thumbnail, a[href^='/watch']");
     if (!thumbnail) return [];
 
     return [
@@ -107,20 +125,29 @@ function queryThumbnailTargets() {
       thumbnail.querySelector("#thumbnail"),
       thumbnail.querySelector("yt-image"),
       thumbnail.querySelector("img"),
-      thumbnail.querySelector("img.yt-core-image")
+      thumbnail.querySelector("img.yt-core-image"),
+      card.querySelector("img[src*='ytimg.com']"),
+      card.querySelector("img.yt-core-image")
     ].filter(Boolean);
   });
 
-  const fallbackTargets = [
-    ...document.querySelectorAll("ytd-thumbnail"),
-    ...document.querySelectorAll("a#thumbnail"),
-    ...document.querySelectorAll("ytd-thumbnail img"),
-    ...document.querySelectorAll("a#thumbnail img"),
-    ...document.querySelectorAll("img.yt-core-image")
-  ];
+  const fallbackTargets = THUMBNAIL_SELECTORS.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
 
   return uniqueElements([...scopedTargets, ...fallbackTargets]).filter((element) => {
     const rect = element.getBoundingClientRect();
     return rect.width > 24 && rect.height > 24;
   });
 }
+
+const THUMBNAIL_SELECTORS = [
+  "ytd-thumbnail",
+  "a#thumbnail",
+  "ytd-thumbnail img",
+  "a#thumbnail img",
+  "img.yt-core-image",
+  "ytd-rich-grid-media #thumbnail",
+  "ytd-rich-grid-media img",
+  "a[href^='/watch'] img",
+  "img[src*='ytimg.com']",
+  "img[src*='i.ytimg.com']"
+];

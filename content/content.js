@@ -1,5 +1,6 @@
 const adapter = window.PersoYoutubeAdapter;
 const log = window.PersoLogger;
+const CONTENT_VERSION = "0.1.2-broad-thumbnail-target";
 let currentPlan = null;
 let applyTimer = null;
 let panel = null;
@@ -7,6 +8,7 @@ let suppressMutationApplyUntil = 0;
 let zeroMatchRetryCount = 0;
 
 log.info("content.loaded", {
+  version: CONTENT_VERSION,
   pageType: adapter.getPageType(),
   hasSavedPlan: false
 });

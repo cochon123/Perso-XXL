@@ -2,6 +2,7 @@ window.PersoExecutor = (() => {
   const log = window.PersoLogger;
   const STYLE_ID = "perso-xxl-theme";
   const RULE_STYLE_ID = "perso-xxl-css-rules";
+  const TARGET_STYLE_ID = "perso-xxl-target-rules";
   const APPLIED_ATTR = "data-perso-xxl-rule";
   const originalState = new WeakMap();
 
@@ -19,12 +20,14 @@ window.PersoExecutor = (() => {
     clearAppliedState();
 
     const cssRules = [];
+    const targetCssRules = [];
 
     for (const rule of plan.rules || []) {
       try {
         if (rule.type === "css") {
           cssRules.push(rule.css);
         } else if (rule.type === "style") {
+          targetCssRules.push(...buildTargetCssRules(rule));
           totalMatched += applyStyleRule(rule, adapter);
         } else if (rule.type === "visibility") {
           totalMatched += applyVisibilityRule(rule, adapter);
@@ -38,8 +41,9 @@ window.PersoExecutor = (() => {
     }
 
     injectCssRules(cssRules);
-    log.info("executor.apply.finished", { cssRuleCount: cssRules.length, totalMatched });
-    return { totalMatched, cssRuleCount: cssRules.length };
+    injectTargetCssRules(targetCssRules);
+    log.info("executor.apply.finished", { cssRuleCount: cssRules.length, targetCssRuleCount: targetCssRules.length, totalMatched });
+    return { totalMatched, cssRuleCount: cssRules.length, targetCssRuleCount: targetCssRules.length };
   }
 
   function revertPlan() {
@@ -47,6 +51,7 @@ window.PersoExecutor = (() => {
 
     document.getElementById(STYLE_ID)?.remove();
     document.getElementById(RULE_STYLE_ID)?.remove();
+    document.getElementById(TARGET_STYLE_ID)?.remove();
     document.documentElement.removeAttribute("data-perso-xxl-enabled");
 
     const elements = Array.from(document.querySelectorAll(`[${APPLIED_ATTR}]`));
@@ -80,13 +85,18 @@ window.PersoExecutor = (() => {
     upsertStyle(RULE_STYLE_ID, cssRules.join("\n"));
   }
 
+  function injectTargetCssRules(cssRules) {
+    upsertStyle(TARGET_STYLE_ID, cssRules.join("\n"));
+  }
+
   function applyStyleRule(rule, adapter) {
     const elements = adapter.queryTarget(rule.target);
     log.debug("executor.rule.style", {
       ruleId: rule.id,
       target: rule.target,
       matchCount: elements.length,
-      matched: summarizeElements(elements)
+      matched: summarizeElements(elements),
+      diagnostics: elements.length === 0 && rule.target === "thumbnail" ? adapter.getSelectorDiagnostics?.() : null
     });
     for (const element of elements) {
       rememberElement(element);
@@ -199,6 +209,71 @@ window.PersoExecutor = (() => {
     if (typeof value !== "string") return fallback;
     if (/url\s*\(|@import|javascript:/i.test(value)) return fallback;
     return value;
+  }
+
+  function buildTargetCssRules(rule) {
+    if (rule.target !== "thumbnail") return [];
+
+    const styles = normalizeThumbnailStyles(rule.styles || {});
+    if (!styles) return [];
+
+    const selector = [
+      "ytd-rich-item-renderer ytd-thumbnail",
+      "ytd-video-renderer ytd-thumbnail",
+      "ytd-grid-video-renderer ytd-thumbnail",
+      "ytd-rich-item-renderer ytd-thumbnail a#thumbnail",
+      "ytd-video-renderer ytd-thumbnail a#thumbnail",
+      "ytd-grid-video-renderer ytd-thumbnail a#thumbnail",
+      "ytd-rich-item-renderer ytd-thumbnail yt-image",
+      "ytd-video-renderer ytd-thumbnail yt-image",
+      "ytd-grid-video-renderer ytd-thumbnail yt-image",
+      "ytd-rich-item-renderer ytd-thumbnail img",
+      "ytd-video-renderer ytd-thumbnail img",
+      "ytd-grid-video-renderer ytd-thumbnail img",
+      "ytd-rich-item-renderer img.yt-core-image",
+      "ytd-video-renderer img.yt-core-image",
+      "ytd-grid-video-renderer img.yt-core-image",
+      "ytd-rich-grid-media #thumbnail",
+      "ytd-rich-grid-media img",
+      "ytd-rich-grid-media img.yt-core-image",
+      "a[href^='/watch'] img",
+      "img[src*='ytimg.com']",
+      "img[src*='i.ytimg.com']"
+    ].join(",\n");
+
+    log.info("executor.thumbnail.css.generated", {
+      ruleId: rule.id,
+      styles
+    });
+
+    return [`${selector} {\n${styles}\n}`];
+  }
+
+  function normalizeThumbnailStyles(styles) {
+    const declarations = [];
+
+    if (styles.borderRadius) {
+      declarations.push(`  border-radius: ${safeCssValue(styles.borderRadius, "16px")} !important;`);
+      declarations.push("  overflow: hidden !important;");
+    }
+
+    if (styles.overflow) {
+      declarations.push(`  overflow: ${safeCssValue(styles.overflow, "hidden")} !important;`);
+    }
+
+    if (styles.aspectRatio) {
+      declarations.push(`  aspect-ratio: ${safeCssValue(styles.aspectRatio, "16 / 9")} !important;`);
+    }
+
+    if (styles.border) {
+      declarations.push(`  border: ${safeCssValue(styles.border, "none")} !important;`);
+    }
+
+    if (styles.boxShadow) {
+      declarations.push(`  box-shadow: ${safeCssValue(styles.boxShadow, "none")} !important;`);
+    }
+
+    return declarations.length > 0 ? declarations.join("\n") : "";
   }
 
   function summarizeElements(elements) {
