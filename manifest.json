@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Perso XXL",
+  "description": "AI-personalized website layouts, starting with YouTube.",
+  "version": "0.1.0",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["https://www.youtube.com/*", "https://openrouter.ai/*", "http://localhost:8787/*"],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_title": "Perso XXL"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": [
+        "config/env.js",
+        "content/logger.js",
+        "content/youtube-adapter.js",
+        "content/executor.js",
+        "content/ai-client.js",
+        "content/content.js"
+      ],
+      "css": ["content/base.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

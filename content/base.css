@@ -1,0 +1,123 @@
+html[data-perso-xxl-enabled="true"] {
+  color-scheme: dark;
+}
+
+[data-perso-xxl-rule] {
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+#perso-xxl-panel {
+  background: #121214;
+  border: 1px solid #34343a;
+  border-radius: 8px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+  box-sizing: border-box;
+  color: #f4f4f5;
+  display: grid;
+  font-family: Inter, Arial, system-ui, sans-serif;
+  gap: 12px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 14px;
+  position: fixed;
+  right: 16px;
+  top: 72px;
+  width: min(380px, calc(100vw - 32px));
+  z-index: 2147483647;
+}
+
+#perso-xxl-panel[hidden] {
+  display: none;
+}
+
+#perso-xxl-panel header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+#perso-xxl-panel strong {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+#perso-xxl-panel label,
+#perso-xxl-panel summary,
+#perso-xxl-panel p {
+  color: #d4d4d8;
+  font-size: 13px;
+  margin: 0;
+}
+
+#perso-xxl-panel textarea {
+  background: #1d1d21;
+  border: 1px solid #34343a;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: #f4f4f5;
+  font: inherit;
+  line-height: 1.4;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+#perso-xxl-panel button {
+  background: #e6a348;
+  border: 0;
+  border-radius: 8px;
+  color: #18110a;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+#perso-xxl-panel button.secondary {
+  background: #2b2b31;
+  color: #f4f4f5;
+}
+
+#perso-xxl-panel header button {
+  align-items: center;
+  background: #2b2b31;
+  color: #f4f4f5;
+  display: inline-flex;
+  font-size: 20px;
+  height: 32px;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
+#perso-xxl-panel button:disabled,
+#perso-xxl-panel textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.perso-xxl-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 100px 82px;
+}
+
+#perso-xxl-panel button.danger {
+  background: #4a2424;
+  color: #ffd1d1;
+}
+
+#perso-xxl-panel details {
+  border-top: 1px solid #2b2b31;
+  padding-top: 10px;
+}
+
+#perso-xxl-panel pre {
+  color: #d4d4d8;
+  font-size: 11px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
