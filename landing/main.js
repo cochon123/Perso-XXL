@@ -258,28 +258,6 @@ gsap.to('.slider-knob', {
   },
 });
 
-/* ── Card stack parallax ── */
-gsap.to('.card-nature', {
-  y: -20,
-  scrollTrigger: { trigger: '.card-stack', start: 'top bottom', end: 'bottom top', scrub: 1 },
-});
-gsap.to('.card-space', {
-  y: -40,
-  xPercent: -50,
-  scrollTrigger: { trigger: '.card-stack', start: 'top bottom', end: 'bottom top', scrub: 1 },
-});
-gsap.to('.card-tech', {
-  y: -20,
-  scrollTrigger: { trigger: '.card-stack', start: 'top bottom', end: 'bottom top', scrub: 1 },
-});
-
-/* Continuous card float */
-if (!prefersReducedMotion) {
-  gsap.to('.card-nature', { y: '+=10', rotation: -12, duration: 3.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
-  gsap.to('.card-space', { y: '+=8', xPercent: -50, duration: 2.8, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 0.4 });
-  gsap.to('.card-tech', { y: '+=10', rotation: 12, duration: 3.4, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 0.8 });
-}
-
 /* ── Productivity parallax bg ── */
 gsap.to('.productivity-bg img', {
   y: 80,
@@ -299,10 +277,12 @@ gsap.from('.feature', {
   duration: 0.8,
   stagger: 0.15,
   ease: 'power3.out',
+  immediateRender: false,
   scrollTrigger: {
     trigger: '.feature-list',
     start: 'top 80%',
-    toggleActions: 'play none none reverse',
+    toggleActions: 'play none none none',
+    once: true,
   },
 });
 

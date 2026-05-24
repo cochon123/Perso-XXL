@@ -17,6 +17,12 @@ const resetBtn = document.getElementById('reset-btn');
 const controlSearch = document.getElementById('control-search');
 const toast = document.getElementById('toast');
 
+const isPlayground = Boolean(controlSections);
+
+if (!aiInput) {
+  // Page has no ai-input markup — skip initialization.
+} else {
+
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** @type {Map<string, { type: string, label: string, url?: string }>} */
@@ -153,7 +159,7 @@ function getCssValue(key) {
 
 function setCssValue(key, value) {
   document.documentElement.style.setProperty(key, value);
-  updateExport();
+  if (isPlayground) updateExport();
 }
 
 function formatDisplayValue(control, raw) {
@@ -350,11 +356,13 @@ function buildJsonExport(vars) {
 }
 
 function updateExport() {
+  if (!exportOutput) return;
   const vars = getAllCssVars();
   exportOutput.textContent = exportFormat === 'css' ? buildCssExport(vars) : buildJsonExport(vars);
 }
 
 function showToast(message) {
+  if (!toast) return;
   toast.textContent = message;
   toast.classList.add('is-visible');
   clearTimeout(toastTimer);
@@ -961,6 +969,7 @@ document.querySelectorAll('.export-tab').forEach((tab) => {
   });
 });
 
+if (copyBtn) {
 copyBtn.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(exportOutput.textContent);
@@ -977,13 +986,16 @@ copyBtn.addEventListener('click', async () => {
     showToast('Select and copy manually');
   }
 });
+}
 
-resetBtn.addEventListener('click', resetControls);
-controlSearch.addEventListener('input', () => filterControls(controlSearch.value));
+if (resetBtn) resetBtn.addEventListener('click', resetControls);
+if (controlSearch) controlSearch.addEventListener('input', () => filterControls(controlSearch.value));
 
 /* ── Init ── */
-buildControls();
-updateExport();
+if (isPlayground) {
+  buildControls();
+  updateExport();
+}
 syncEditorEmptyState();
 updateLayoutMode();
 updateSendState();
@@ -991,20 +1003,13 @@ updateSendState();
 new ResizeObserver(() => updateLayoutMode()).observe(aiInput);
 
 if (!prefersReducedMotion) {
+  if (isPlayground) {
   gsap.from('.stage-eyebrow, .stage-title, .stage-desc', {
     y: 24,
     opacity: 0,
     duration: 0.7,
     stagger: 0.1,
     ease: 'power3.out',
-  });
-
-  gsap.from('.ai-input', {
-    y: 30,
-    opacity: 0,
-    duration: 0.85,
-    delay: 0.25,
-    ease: 'back.out(1.2)',
   });
 
   gsap.from('.panel', {
@@ -1014,4 +1019,15 @@ if (!prefersReducedMotion) {
     delay: 0.15,
     ease: 'power3.out',
   });
+  }
+
+  gsap.from('.ai-input', {
+    y: 30,
+    opacity: 0,
+    duration: 0.85,
+    delay: isPlayground ? 0.25 : 0,
+    ease: 'back.out(1.2)',
+  });
 }
+
+} /* end aiInput guard */
