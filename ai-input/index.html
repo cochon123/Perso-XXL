@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Perso XXL — AI Input Playground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+  </div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a href="../landing/index.html" class="brand">Perso<span>XXL</span></a>
+    <span class="topbar-label">AI Input Playground</span>
+  </header>
+
+  <div class="layout">
+    <main class="stage">
+      <div class="stage-inner">
+        <p class="stage-eyebrow">Live preview</p>
+        <h1 class="stage-title">Design your prompt bar</h1>
+        <p class="stage-desc">Tweak every detail in the panel, then copy the config into the extension.</p>
+
+        <div class="preview-wrap">
+          <div class="preview-glow" aria-hidden="true"></div>
+
+          <div class="preview-stack" id="preview-stack">
+            <div class="ai-sent-list" id="sent-list" aria-live="polite"></div>
+
+            <div class="ai-input" id="ai-input" data-state="idle" data-multiline="false">
+              <div class="ai-input__body">
+                <div class="ai-input__left">
+                  <button
+                    type="button"
+                    class="ai-input__btn ai-input__btn--attach"
+                    id="attach-toggle"
+                    aria-label="Add attachment"
+                    aria-expanded="false"
+                    aria-haspopup="menu"
+                  >
+                    <svg class="ai-input__icon ai-input__icon--plus" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <span class="ai-input__loader" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none">
+                        <g transform="translate(12 12)">
+                          <circle r="9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="28 56" transform="rotate(-90)"/>
+                        </g>
+                      </svg>
+                    </span>
+                  </button>
+
+                <div class="ai-input__menu" id="attach-menu" role="menu" hidden>
+                  <button type="button" class="ai-input__menu-item" role="menuitem" data-action="image">
+                    <span class="ai-input__menu-icon">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.75"/>
+                        <circle cx="8.5" cy="10.5" r="1.75" fill="currentColor"/>
+                        <path d="M21 16l-5.5-5.5a1.5 1.5 0 0 0-2.12 0L3 19" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                      </svg>
+                    </span>
+                    <span class="ai-input__menu-text">
+                      <strong>Add image</strong>
+                      <small>Upload a reference</small>
+                    </span>
+                  </button>
+                  <button type="button" class="ai-input__menu-item" role="menuitem" data-action="pick">
+                    <span class="ai-input__menu-icon">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M4 4l7 16 2.5-6.5L20 11 4 4z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+                        <path d="M13 13l6 6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                      </svg>
+                    </span>
+                    <span class="ai-input__menu-text">
+                      <strong>Pick from page</strong>
+                      <small>Select an element</small>
+                    </span>
+                  </button>
+                </div>
+
+                <input type="file" id="image-input" accept="image/*" hidden />
+              </div>
+
+              <div class="ai-input__field-wrap">
+                <div
+                  class="ai-input__editor"
+                  id="prompt-editor"
+                  contenteditable="true"
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="Describe what you want to change"
+                  spellcheck="true"
+                ></div>
+                <span class="ai-input__placeholder" id="prompt-placeholder" aria-hidden="true">
+                  Describe what you want to change…
+                </span>
+                <div class="ai-input__status" id="input-status" hidden>
+                  <div class="ai-input__status-viewport">
+                    <div class="ai-input__status-line" id="status-line">
+                      <span class="ai-input__status-label" id="status-label"></span>
+                      <span class="ai-input__dots" id="status-dots" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="ai-input__btn ai-input__btn--send"
+                id="send-btn"
+                aria-label="Send prompt"
+                disabled
+              >
+                <svg class="ai-input__icon ai-input__icon--send" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          </div>
+        </div>
+
+        <p class="stage-hint">Press <kbd>Enter</kbd> to send · <kbd>Backspace</kbd> removes attachments · <kbd>Esc</kbd> closes the menu</p>
+      </div>
+    </main>
+
+    <aside class="panel" id="controls-panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Customize</h2>
+          <p class="panel-sub">Sliders & toggles update the preview instantly.</p>
+        </div>
+        <button type="button" class="panel-reset" id="reset-btn" title="Reset to defaults">Reset</button>
+      </div>
+
+      <div class="panel-search">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.75"/>
+          <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+        </svg>
+        <input type="search" id="control-search" placeholder="Filter properties…" autocomplete="off" />
+      </div>
+
+      <div class="panel-sections" id="control-sections"></div>
+
+      <div class="panel-export">
+        <div class="panel-export-header">
+          <h3>Export</h3>
+          <div class="export-tabs">
+            <button type="button" class="export-tab is-active" data-format="css">CSS</button>
+            <button type="button" class="export-tab" data-format="json">JSON</button>
+          </div>
+        </div>
+        <pre class="export-output" id="export-output" tabindex="0"></pre>
+        <button type="button" class="copy-btn" id="copy-btn">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.75"/>
+            <path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+          </svg>
+          <span>Copy to clipboard</span>
+        </button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

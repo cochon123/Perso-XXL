@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Perso XXL — Make every app truly yours</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chewy&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=3" />
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+
+  <nav class="nav">
+    <a href="#" class="nav-logo">Perso<span>XXL</span></a>
+    <a href="#install" class="nav-cta">Get the extension</a>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="hero-bg">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+    <div class="hero-floats" aria-hidden="true">
+      <div class="hero-float-card" id="float-nature" data-float-id="nature">
+        <div class="hero-float-motion">
+          <div class="hero-float-tilt">
+            <img src="pictures/nature_yt.png" alt="" draggable="false" />
+          </div>
+        </div>
+      </div>
+      <div class="hero-float-card" id="float-pony" data-float-id="pony">
+        <div class="hero-float-motion">
+          <div class="hero-float-tilt">
+            <img src="pictures/my-little-pony_yt.png" alt="" draggable="false" />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-content">
+      <p class="hero-eyebrow">Chrome extension · AI-powered</p>
+      <h1 class="hero-title">
+        <span class="line">Make every app</span>
+        <span class="line accent">truly yours.</span>
+      </h1>
+      <p class="hero-sub">
+        Reshape any website to match how <em>you</em> think, work, and feel —
+        without touching a single line of code.
+      </p>
+      <div class="hero-actions">
+        <a href="#install" class="btn btn-primary">Install free</a>
+        <a href="#personalize" class="btn btn-ghost">See it in action</a>
+      </div>
+    </div>
+    <div class="scroll-hint" aria-hidden="true">
+      <span>Scroll</span>
+      <div class="scroll-line"></div>
+    </div>
+  </header>
+
+  <!-- Not average -->
+  <section class="section not-average">
+    <div class="section-inner">
+      <p class="big-statement reveal-chars">
+        UI and UX are made for the average person.
+      </p>
+      <p class="big-statement punch reveal-chars">
+        You are <span class="highlight">not</span> average.
+      </p>
+      <p class="body-text reveal">
+        Every app you open was designed for millions of strangers.
+        Perso XXL lets you rewrite the interface in plain English —
+        hide what annoys you, highlight what matters, make it feel like home.
+      </p>
+    </div>
+    <div class="marquee-wrap" aria-hidden="true">
+      <div class="marquee">
+        <span>personalize · reshape · simplify · beautify · focus · customize · personalize · reshape · simplify · beautify · focus · customize ·</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Before / After comparison -->
+  <section class="comparison" id="personalize">
+    <div class="comparison-pin">
+      <div class="comparison-stage">
+        <!-- After (fun) layer -->
+        <div class="comparison-layer layer-after">
+          <img src="https://picsum.photos/seed/perso-fun/1920/1080" alt="" class="comparison-img" />
+          <div class="comparison-vignette fun"></div>
+          <div class="comparison-word word-fun" data-word="FUN">
+            <span class="letter">F</span><span class="letter">U</span><span class="letter">N</span>
+          </div>
+        </div>
+        <!-- Before (boring) layer -->
+        <div class="comparison-layer layer-before" id="comparison-before">
+          <img src="https://picsum.photos/seed/perso-boring/1920/1080" alt="" class="comparison-img desaturated" />
+          <div class="comparison-vignette boring"></div>
+          <div class="comparison-word word-boring" data-word="BORING">
+            <span class="letter">B</span><span class="letter">O</span><span class="letter">R</span><span class="letter">I</span><span class="letter">N</span><span class="letter">G</span>
+          </div>
+        </div>
+        <!-- Slider -->
+        <div class="comparison-slider" id="comparison-slider">
+          <div class="slider-line"></div>
+          <div class="slider-knob">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 6l-4 6 4 6M16 6l4 6-4 6"/>
+            </svg>
+          </div>
+        </div>
+        <p class="comparison-caption">Scroll to reveal your version</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Personalization copy -->
+  <section class="section personalize-copy">
+    <div class="section-inner split">
+      <div class="split-text">
+        <h2 class="section-title reveal">Personalization,<br />without the friction.</h2>
+        <p class="body-text reveal">
+          Pick an element, describe what you want, and watch the page transform.
+          Your layout plans save automatically — every visit feels exactly right.
+        </p>
+      </div>
+      <div class="split-visual reveal">
+        <div class="card-stack">
+          <div class="stack-card card-1">
+            <img src="https://picsum.photos/seed/card1/400/300" alt="" />
+          </div>
+          <div class="stack-card card-2">
+            <img src="https://picsum.photos/seed/card2/400/300" alt="" />
+          </div>
+          <div class="stack-card card-3">
+            <img src="https://picsum.photos/seed/card3/400/300" alt="" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Productivity -->
+  <section class="section productivity">
+    <div class="productivity-bg">
+      <img src="https://picsum.photos/seed/productivity/1920/800" alt="" />
+    </div>
+    <div class="section-inner">
+      <h2 class="section-title light reveal">Productivity that<br />runs on autopilot.</h2>
+      <p class="body-text light reveal">
+        You don't even have to think about it.
+        Perso XXL remembers your preferences per site and reapplies them
+        the moment a page loads. Less noise. More flow.
+      </p>
+      <ul class="feature-list">
+        <li class="feature reveal">
+          <span class="feature-icon">⌘</span>
+          <div>
+            <strong>One shortcut away</strong>
+            <p>Press <kbd>Ctrl+Shift+P</kbd> anywhere. Describe. Done.</p>
+          </div>
+        </li>
+        <li class="feature reveal">
+          <span class="feature-icon">◎</span>
+          <div>
+            <strong>Point at what matters</strong>
+            <p>Click elements to give the AI precise context.</p>
+          </div>
+        </li>
+        <li class="feature reveal">
+          <span class="feature-icon">↻</span>
+          <div>
+            <strong>Always there</strong>
+            <p>Saved plans reapply on every visit. Set it once.</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Extension CTA -->
+  <section class="section extension-cta" id="install">
+    <div class="section-inner centered">
+      <div class="extension-badge reveal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="4"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+        <span>It's just an extension.</span>
+      </div>
+      <h2 class="section-title reveal">No new app.<br />No new tab.<br />No learning curve.</h2>
+      <p class="body-text reveal">
+        Perso XXL lives inside the browser you already use.
+        Install it once, personalize everything — Gmail, Notion, Reddit, whatever you open daily.
+      </p>
+      <a href="#" class="btn btn-primary btn-lg reveal">Add to Chrome — it's free</a>
+      <p class="fine-print reveal">Works on any http/https website · OpenRouter-powered AI</p>
+    </div>
+    <div class="floating-icons" aria-hidden="true">
+      <div class="float-icon">✦</div>
+      <div class="float-icon">◆</div>
+      <div class="float-icon">●</div>
+      <div class="float-icon">▲</div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>Perso XXL · Make every app truly yours.</p>
+  </footer>
+
+  <!-- Dev tweak panel (remove later) -->
+  <aside class="tweak-panel" id="tweak-panel">
+    <button type="button" class="tweak-toggle" id="tweak-toggle" aria-expanded="true">Tweak</button>
+    <div class="tweak-body">
+      <h3 class="tweak-title">Hero floats</h3>
+      <label class="tweak-field">
+        <span>Image</span>
+        <select id="tweak-target">
+          <option value="nature">Nature (top right)</option>
+          <option value="pony">My Little Pony (bottom left)</option>
+        </select>
+      </label>
+      <label class="tweak-field">
+        <span>Size (px)</span>
+        <input type="range" id="tweak-size" min="80" max="1000" step="4" />
+        <output id="tweak-size-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Position X (%)</span>
+        <input type="range" id="tweak-x" min="0" max="100" step="0.5" />
+        <output id="tweak-x-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Position Y (%)</span>
+        <input type="range" id="tweak-y" min="0" max="100" step="0.5" />
+        <output id="tweak-y-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Bounce speed (s)</span>
+        <input type="range" id="tweak-bounce-speed" min="0.5" max="8" step="0.1" />
+        <output id="tweak-bounce-speed-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Bounce delta X (px)</span>
+        <input type="range" id="tweak-bounce-dx" min="0" max="80" step="1" />
+        <output id="tweak-bounce-dx-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Bounce delta Y (px)</span>
+        <input type="range" id="tweak-bounce-dy" min="0" max="80" step="1" />
+        <output id="tweak-bounce-dy-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Mouse influence (°)</span>
+        <input type="range" id="tweak-mouse" min="0" max="40" step="1" />
+        <output id="tweak-mouse-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Rotation (°)</span>
+        <input type="range" id="tweak-rotation" min="-45" max="45" step="0.5" />
+        <output id="tweak-rotation-val"></output>
+      </label>
+      <label class="tweak-field">
+        <span>Rotation Z (°)</span>
+        <input type="range" id="tweak-rotation-z" min="-180" max="180" step="0.5" />
+        <output id="tweak-rotation-z-val"></output>
+      </label>
+      <button type="button" class="tweak-copy" id="tweak-copy">Copy config</button>
+    </div>
+  </aside>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/ScrollTrigger.min.js"></script>
+  <script src="main.js?v=3"></script>
+  <script src="hero-floats.js"></script>
+</body>
+</html>
