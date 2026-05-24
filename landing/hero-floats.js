@@ -1,7 +1,7 @@
 (() => {
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const defaults = {
+  const config = {
     nature: {
       size: 604,
       x: 93,
@@ -10,8 +10,8 @@
       bounceDeltaX: 2,
       bounceDeltaY: 16,
       mouseInfluence: 5,
-      rotation: 0,
-      rotationZ: 0,
+      rotation: -13,
+      rotationZ: 11.5,
     },
     pony: {
       size: 524,
@@ -21,12 +21,11 @@
       bounceDeltaX: 5,
       bounceDeltaY: 25,
       mouseInfluence: 2,
-      rotation: 0,
-      rotationZ: 0,
+      rotation: 13.5,
+      rotationZ: -15.5,
     },
   };
 
-  const config = structuredClone(defaults);
   const floats = {};
   const bounceTweens = {};
 
@@ -69,6 +68,17 @@
     updateTilt(id);
   }
 
+  function updateTilt(id) {
+    const cfg = config[id];
+    const { tilt, rotX, rotY } = floats[id];
+    gsap.set(tilt, {
+      rotateX: rotX,
+      rotateY: cfg.rotation + rotY,
+      rotateZ: cfg.rotationZ,
+      transformPerspective: 800,
+    });
+  }
+
   function initFloat(id) {
     const card = getCard(id);
     if (!card) return;
@@ -107,95 +117,6 @@
     });
   }
 
-  function updateTilt(id) {
-    const cfg = config[id];
-    const { tilt, rotX, rotY } = floats[id];
-    gsap.set(tilt, {
-      rotateX: rotX,
-      rotateY: cfg.rotation + rotY,
-      rotateZ: cfg.rotationZ,
-      transformPerspective: 800,
-    });
-  }
-
-  /* ── Tweak panel ── */
-  const panel = document.getElementById('tweak-panel');
-  const targetSelect = document.getElementById('tweak-target');
-  const fields = {
-    size: document.getElementById('tweak-size'),
-    x: document.getElementById('tweak-x'),
-    y: document.getElementById('tweak-y'),
-    bounceSpeed: document.getElementById('tweak-bounce-speed'),
-    bounceDeltaX: document.getElementById('tweak-bounce-dx'),
-    bounceDeltaY: document.getElementById('tweak-bounce-dy'),
-    mouseInfluence: document.getElementById('tweak-mouse'),
-    rotation: document.getElementById('tweak-rotation'),
-    rotationZ: document.getElementById('tweak-rotation-z'),
-  };
-  const outputs = {
-    size: document.getElementById('tweak-size-val'),
-    x: document.getElementById('tweak-x-val'),
-    y: document.getElementById('tweak-y-val'),
-    bounceSpeed: document.getElementById('tweak-bounce-speed-val'),
-    bounceDeltaX: document.getElementById('tweak-bounce-dx-val'),
-    bounceDeltaY: document.getElementById('tweak-bounce-dy-val'),
-    mouseInfluence: document.getElementById('tweak-mouse-val'),
-    rotation: document.getElementById('tweak-rotation-val'),
-    rotationZ: document.getElementById('tweak-rotation-z-val'),
-  };
-
-  function activeId() {
-    return targetSelect.value;
-  }
-
-  function syncPanelFromConfig() {
-    const id = activeId();
-    const cfg = config[id];
-    Object.keys(fields).forEach((key) => {
-      fields[key].value = cfg[key];
-      outputs[key].textContent = cfg[key];
-    });
-  }
-
-  function onFieldChange(key) {
-    const id = activeId();
-    config[id][key] = parseFloat(fields[key].value);
-    outputs[key].textContent = fields[key].value;
-
-    if (key === 'size' || key === 'x' || key === 'y') {
-      applyLayout(id);
-    } else if (key.startsWith('bounce')) {
-      applyBounce(id);
-    } else if (key === 'rotation' || key === 'rotationZ') {
-      updateTilt(id);
-    }
-  }
-
-  Object.keys(fields).forEach((key) => {
-    fields[key].addEventListener('input', () => onFieldChange(key));
-  });
-
-  targetSelect.addEventListener('change', syncPanelFromConfig);
-
-  document.getElementById('tweak-toggle').addEventListener('click', () => {
-    panel.classList.toggle('collapsed');
-    document.getElementById('tweak-toggle').setAttribute(
-      'aria-expanded',
-      String(!panel.classList.contains('collapsed'))
-    );
-  });
-
-  document.getElementById('tweak-copy').addEventListener('click', () => {
-    const text = JSON.stringify(config, null, 2);
-    navigator.clipboard.writeText(text).then(() => {
-      const btn = document.getElementById('tweak-copy');
-      const prev = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = prev; }, 1200);
-    });
-  });
-
   initFloat('nature');
   initFloat('pony');
-  syncPanelFromConfig();
 })();
