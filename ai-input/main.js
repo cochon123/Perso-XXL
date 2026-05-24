@@ -18,6 +18,7 @@ const controlSearch = document.getElementById('control-search');
 const toast = document.getElementById('toast');
 
 const isPlayground = Boolean(controlSections);
+const isDemo = () => Boolean(window.PersoDemo?.enabled);
 
 if (!aiInput) {
   // Page has no ai-input markup — skip initialization.
@@ -544,10 +545,10 @@ function insertAtCaret(node) {
   placeCaretAfter(node);
 }
 
-function createTokenElement({ type, label, url }) {
+function createTokenElement({ type, label, url, element = null, file = null }) {
   tokenCounter += 1;
   const id = `token_${tokenCounter}`;
-  tokenStore.set(id, { type, label, url });
+  tokenStore.set(id, { type, label, url, element, file });
 
   const token = document.createElement('span');
   token.className = `ai-input__token${type === 'pick' ? ' ai-input__token--pick' : ''}`;
@@ -655,6 +656,10 @@ function clearEditor({ revokeAssets = true } = {}) {
   updateLayoutMode();
 }
 
+function captureTokenPayload() {
+  return Array.from(tokenStore.entries()).map(([id, stored]) => [id, { ...stored }]);
+}
+
 function serializeEditor() {
   const parts = [];
   promptEditor.childNodes.forEach((node) => {
@@ -686,9 +691,32 @@ function simulatePick() {
   closeMenu();
 }
 
+async function handlePickAction() {
+  if (!isDemo()) {
+    simulatePick();
+    return;
+  }
+
+  closeMenu();
+
+  try {
+    const element = await window.PersoDemo.pickElement();
+    const label = window.PersoDemo.formatElementLabel(element);
+    insertToken({ type: 'pick', label, element });
+    showToast(`Element selected — ${label}`);
+  } catch {
+    // Selection cancelled.
+  }
+}
+
 function handleImageSelect(file) {
   if (!file) return;
-  insertToken({ type: 'image', label: file.name, url: URL.createObjectURL(file) });
+  insertToken({
+    type: 'image',
+    label: file.name,
+    url: URL.createObjectURL(file),
+    file,
+  });
   showToast(`Image attached — ${file.name}`);
   closeMenu();
 }
@@ -754,7 +782,7 @@ function cycleStatusMessage() {
   });
 }
 
-function enterLoadingState(snapshot) {
+function enterLoadingState(snapshot, { autoFinish = true } = {}) {
   if (isLoading) return;
   isLoading = true;
   closeMenu();
@@ -776,7 +804,31 @@ function enterLoadingState(snapshot) {
   updateLayoutMode();
 
   loadingInterval = setInterval(cycleStatusMessage, LOADING_MESSAGE_INTERVAL_MS);
-  loadingFinishTimeout = setTimeout(finishLoadingSequence, LOADING_DURATION_MS);
+  if (autoFinish) {
+    loadingFinishTimeout = setTimeout(finishLoadingSequence, LOADING_DURATION_MS);
+  }
+}
+
+function abortLoadingState(message) {
+  clearInterval(loadingInterval);
+  clearTimeout(loadingFinishTimeout);
+  loadingInterval = null;
+  loadingFinishTimeout = null;
+  isLoading = false;
+  isDone = false;
+  aiInput.dataset.state = 'idle';
+  delete aiInput.dataset.statusDone;
+  promptEditor.contentEditable = 'true';
+  attachToggle.disabled = false;
+  attachToggle.setAttribute('aria-label', 'Add attachment');
+  sendBtn.disabled = true;
+  inputStatus.hidden = true;
+  sentList.innerHTML = '';
+  gsap.set(statusLine, { y: 0, opacity: 1 });
+  syncEditorEmptyState();
+  updateLayoutMode();
+  updateSendState();
+  showToast(message);
 }
 
 function finishLoadingSequence() {
@@ -816,6 +868,9 @@ function enterDoneState() {
 }
 
 function revertChanges() {
+  if (isDemo()) {
+    window.PersoDemo.onRevert?.().catch(() => {});
+  }
   isDone = false;
   sentList.innerHTML = '';
   aiInput.dataset.state = 'idle';
@@ -865,7 +920,7 @@ attachMenu.addEventListener('click', (e) => {
   if (!item) return;
   const action = item.dataset.action;
   if (action === 'image') imageInput.click();
-  if (action === 'pick') simulatePick();
+  if (action === 'pick') handlePickAction();
 });
 
 imageInput.addEventListener('change', () => {
@@ -951,10 +1006,21 @@ sendBtn.addEventListener('click', () => {
     return;
   }
   if (sendBtn.disabled || isLoading) return;
+
   const snapshot = captureEditorSnapshot();
+  const prompt = serializeEditor();
+  const tokens = captureTokenPayload();
 
   if (!prefersReducedMotion) {
     gsap.fromTo(sendBtn, { scale: 1 }, { scale: 0.88, duration: 0.1, yoyo: true, repeat: 1, ease: 'power2.inOut' });
+  }
+
+  if (isDemo()) {
+    enterLoadingState(snapshot, { autoFinish: false });
+    window.PersoDemo.onSend({ prompt, tokens })
+      .then(() => finishLoadingSequence())
+      .catch((error) => abortLoadingState(error.message || String(error)));
+    return;
   }
 
   enterLoadingState(snapshot);

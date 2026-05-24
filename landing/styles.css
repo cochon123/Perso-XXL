@@ -877,3 +877,35 @@ a { color: inherit; text-decoration: none; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Element picker (landing demo) ── */
+#perso-xxl-picker-overlay {
+  cursor: crosshair;
+  inset: 0;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+#perso-xxl-picker-highlight {
+  background: rgba(255, 45, 122, 0.12);
+  border: 2px solid #ff2d7a;
+  box-sizing: border-box;
+  pointer-events: none;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+#perso-xxl-picker-hint {
+  background: rgba(18, 10, 16, 0.94);
+  border: 1px solid rgba(255, 45, 122, 0.35);
+  border-radius: 999px;
+  bottom: 20px;
+  color: #faf8f9;
+  font-size: 13px;
+  left: 50%;
+  padding: 10px 14px;
+  pointer-events: none;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+}

@@ -360,7 +360,7 @@ window.PersoDomContext = (() => {
   function isPersoNode(node) {
     return Boolean(
       node?.id?.startsWith("perso-xxl") ||
-      node?.closest?.("#perso-xxl-panel, #perso-xxl-picker-overlay, [data-perso-xxl-ui]")
+      node?.closest?.("#perso-xxl-panel, #perso-xxl-picker-overlay, [data-perso-xxl-ui], .ai-input, .ai-sent-list, .preview-stack, .productivity-ai-wrap, .productivity-toast")
     );
   }
 
