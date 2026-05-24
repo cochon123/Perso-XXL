@@ -11,6 +11,7 @@ Perso XXL is a first-pass Chrome/Chromium extension that generates and applies A
 - Strict JSON transform-plan generation through OpenRouter.
 - Plan validation that blocks raw selectors, arbitrary JavaScript, unsafe CSS patterns, and unsupported rule types.
 - Generic focused DOM collector for arbitrary websites, with YouTube-specific selectors still available.
+- Background injection fallback so the command palette can open on already-loaded pages after extension reloads.
 - Content-script executor for `style`, `visibility`, `attribute`, and restricted `css` rules.
 - Saved plans are stored per hostname and reapply when the page changes.
 

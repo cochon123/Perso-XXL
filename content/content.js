@@ -15,6 +15,11 @@ log.info("content.loaded", {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "PERSO_PING") {
+    sendResponse({ ok: true, version: CONTENT_VERSION });
+    return true;
+  }
+
   if (message?.type === "PERSO_TOGGLE_PANEL") {
     log.info("panel.toggle.requested");
     togglePanel();
@@ -97,8 +102,7 @@ function isRelevantPageMutation(mutation) {
 
   return nodes.some((node) => {
     if (isPersoNode(node)) return false;
-    return node.matches?.("ytd-app, ytd-page-manager, ytd-rich-grid-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-thumbnail") ||
-      node.querySelector?.("ytd-rich-grid-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-thumbnail");
+    return isLikelyContentNode(node);
   });
 }
 
@@ -106,6 +110,11 @@ function isPersoNode(node) {
   return node.id?.startsWith("perso-xxl") ||
     node.closest?.("#perso-xxl-panel") ||
     node.hasAttribute?.("data-perso-xxl-rule");
+}
+
+function isLikelyContentNode(node) {
+  return node.matches?.("main, section, article, header, nav, aside, footer, img, video, canvas, button, a, form, input, textarea, select, ytd-app, ytd-page-manager, ytd-rich-grid-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-thumbnail") ||
+    node.querySelector?.("main, section, article, header, nav, aside, footer, img, video, canvas, button, a, form, input, textarea, select, ytd-rich-grid-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-thumbnail");
 }
 
 function togglePanel() {
