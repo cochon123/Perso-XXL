@@ -1,8 +1,8 @@
 const CONTENT_FILES = [
   "config/env.js",
   "content/logger.js",
-  "content/youtube-adapter.js",
-  "content/focused-dom.js",
+  "content/picker.js",
+  "content/dom-context.js",
   "content/executor.js",
   "content/ai-client.js",
   "content/content.js"

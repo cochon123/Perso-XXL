@@ -1,32 +1,37 @@
 export const TRANSFORM_SCHEMA_HINT = {
-  version: "1.0",
-  site: "youtube.com",
-  theme: {
-    colors: {
-      background: "#111111",
-      surface: "#1F1F1F",
-      surfaceElevated: "#2A2A2A",
-      text: "#F5F5F5",
-      textMuted: "#B8B8B8",
-      accent: "#D99A4E"
+  version: "2.0",
+  site: {
+    hostname: "example.com",
+    pathname: "/watch",
+    urlPattern: "example.com/watch*"
+  },
+  sourcePrompt: "Hide the Gemini button",
+  selections: [
+    {
+      id: "sel_1",
+      tag: "button",
+      ariaLabel: "Ask Gemini"
+    }
+  ],
+  targetMap: {
+    gemini_button: {
+      source: "selection",
+      selectionRef: "sel_1",
+      selectors: ["button[aria-label='Ask Gemini']"],
+      fallbackSelectors: [".docs-toolbar button:nth-of-type(4)"]
     },
-    typography: {
-      fontFamily: "Inter, Arial, system-ui, sans-serif",
-      baseFontSize: "15px"
-    },
-    radius: "12px",
-    density: "comfortable"
+    video_titles: {
+      source: "inferred",
+      selectors: ["#video-title", "a#video-title-link"],
+      fallbackSelectors: []
+    }
   },
   rules: [
     {
-      id: "video-card-style",
-      type: "style",
-      target: "videoCard",
-      styles: {
-        backgroundColor: "var(--perso-surface)",
-        borderRadius: "var(--perso-radius)",
-        padding: "10px"
-      }
+      id: "hide-gemini",
+      type: "visibility",
+      targetRef: "gemini_button",
+      action: "hide"
     }
   ]
 };
@@ -36,6 +41,11 @@ export const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "
 export const ALLOWED_STYLE_KEYS = new Set([
   "background",
   "backgroundColor",
+  "backgroundImage",
+  "backgroundSize",
+  "backgroundPosition",
+  "backgroundRepeat",
+  "backgroundAttachment",
   "border",
   "borderBottom",
   "borderColor",
@@ -66,19 +76,3 @@ export const ALLOWED_STYLE_KEYS = new Set([
   "transform",
   "aspectRatio"
 ]);
-
-export const ALLOWED_TARGETS = [
-  "app",
-  "masthead",
-  "sidebar",
-  "homeFeed",
-  "videoCard",
-  "videoTitle",
-  "thumbnail",
-  "chips",
-  "shortsShelf",
-  "watchPage",
-  "player",
-  "recommendations",
-  "comments"
-];

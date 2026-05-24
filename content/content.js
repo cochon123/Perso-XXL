@@ -1,16 +1,16 @@
-const adapter = window.PersoYoutubeAdapter;
 const log = window.PersoLogger;
-const CONTENT_VERSION = "0.2.0-focused-dom-pipeline";
+const CONTENT_VERSION = "0.3.0-picker-pipeline";
 let currentPlan = null;
 let applyTimer = null;
 let panel = null;
 let suppressMutationApplyUntil = 0;
 let zeroMatchRetryCount = 0;
 let uploadedAsset = null;
+let selectedElements = [];
+let selectionCounter = 0;
 
 log.info("content.loaded", {
   version: CONTENT_VERSION,
-  pageType: adapter.getPageType(),
   hasSavedPlan: false
 });
 
@@ -24,13 +24,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     log.info("panel.toggle.requested");
     togglePanel();
     sendResponse({ ok: true });
-    return true;
-  }
-
-  if (message?.type === "PERSO_COLLECT_DOM") {
-    const domSummary = adapter.buildDomSummary();
-    log.info("dom.summary.collected", summarizeDomForLog(domSummary));
-    sendResponse({ ok: true, domSummary });
     return true;
   }
 
@@ -52,11 +45,6 @@ chrome.storage.local.get([getPlanStorageKey()], (state) => {
     currentPlan = savedPlan;
     applyCurrentPlan();
   }
-});
-
-window.addEventListener("yt-navigate-finish", () => {
-  log.info("youtube.navigation.finished", { pageType: adapter.getPageType() });
-  scheduleApply("youtube-navigation");
 });
 
 const observer = new MutationObserver((mutations) => {
@@ -82,11 +70,10 @@ function applyCurrentPlan() {
   if (!currentPlan) return;
   suppressMutationApplyUntil = Date.now() + 1200;
   log.info("plan.apply.started", {
-    ruleCount: currentPlan.rules?.length || 0,
-    pageType: adapter.getPageType()
+    ruleCount: currentPlan.rules?.length || 0
   });
-  const result = window.PersoExecutor.applyPlan(currentPlan, adapter);
-  log.info("plan.apply.finished");
+  const result = window.PersoExecutor.applyPlan(currentPlan);
+  log.info("plan.apply.finished", result);
   if (result?.totalMatched === 0 && zeroMatchRetryCount < 5) {
     zeroMatchRetryCount += 1;
     log.warn("plan.apply.zero_matches", { retry: zeroMatchRetryCount });
@@ -102,7 +89,8 @@ function isRelevantPageMutation(mutation) {
 
   return nodes.some((node) => {
     if (isPersoNode(node)) return false;
-    return isLikelyContentNode(node);
+    return Boolean(node.matches?.("main, section, article, header, nav, aside, footer, img, video, canvas, button, a, form, input, textarea, select") ||
+      node.querySelector?.("main, section, article, header, nav, aside, footer, img, video, canvas, button, a, form, input, textarea, select"));
   });
 }
 
@@ -110,11 +98,6 @@ function isPersoNode(node) {
   return node.id?.startsWith("perso-xxl") ||
     node.closest?.("#perso-xxl-panel") ||
     node.hasAttribute?.("data-perso-xxl-rule");
-}
-
-function isLikelyContentNode(node) {
-  return node.matches?.("main, section, article, header, nav, aside, footer, img, video, canvas, button, a, form, input, textarea, select, ytd-app, ytd-page-manager, ytd-rich-grid-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-thumbnail") ||
-    node.querySelector?.("main, section, article, header, nav, aside, footer, img, video, canvas, button, a, form, input, textarea, select, ytd-rich-grid-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-thumbnail");
 }
 
 function togglePanel() {
@@ -139,7 +122,11 @@ function createPanel() {
       <button type="button" data-action="close" aria-label="Close">×</button>
     </header>
     <label for="perso-xxl-notes">What do you want to change?</label>
-    <textarea id="perso-xxl-notes" rows="4" placeholder="Example: Make the thumbnails circular."></textarea>
+    <div class="perso-xxl-prompt-row">
+      <textarea id="perso-xxl-notes" rows="4" placeholder="Example: Remove this button."></textarea>
+      <button type="button" data-action="pick" class="secondary perso-xxl-pick-button" title="Select element">◎</button>
+    </div>
+    <div class="perso-xxl-selections" data-role="selections" hidden></div>
     <div class="perso-xxl-asset-row">
       <label class="perso-xxl-file-button">
         Attach image
@@ -161,6 +148,7 @@ function createPanel() {
 
   root.addEventListener("click", handlePanelClick);
   root.querySelector("#perso-xxl-asset").addEventListener("change", handleAssetChange);
+  root.querySelector('[data-role="selections"]').addEventListener("click", handleSelectionClick);
   return root;
 }
 
@@ -171,13 +159,13 @@ async function loadPanelState() {
 
   if (state.profileNotes) notes.value = state.profileNotes;
   if (savedPlan) renderPlan(savedPlan);
+  renderSelections();
   log.info("panel.state.loaded", {
     hasProfileNotes: Boolean(state.profileNotes),
     hasSavedPlan: Boolean(savedPlan),
     key: getPlanStorageKey()
   });
   notes.focus();
-  notes.select();
 }
 
 async function handlePanelClick(event) {
@@ -187,6 +175,11 @@ async function handlePanelClick(event) {
   if (action === "close") {
     panel.hidden = true;
     log.info("panel.closed");
+    return;
+  }
+
+  if (action === "pick") {
+    await startElementPick();
     return;
   }
 
@@ -205,6 +198,62 @@ async function handlePanelClick(event) {
   }
 }
 
+function handleSelectionClick(event) {
+  const removeId = event.target?.dataset?.removeSelection;
+  if (!removeId) return;
+
+  selectedElements = selectedElements.filter((selection) => selection.id !== removeId);
+  renderSelections();
+  log.info("selection.removed", { selectionId: removeId, remaining: selectedElements.length });
+}
+
+async function startElementPick() {
+  if (!panel || window.PersoPicker.isActive()) return;
+
+  panel.hidden = true;
+  log.info("picker.requested");
+
+  try {
+    const element = await window.PersoPicker.pickElement();
+    selectionCounter += 1;
+    const selection = window.PersoDomContext.buildSelection(element, `sel_${selectionCounter}`);
+    selectedElements.push(selection);
+    renderSelections();
+    log.info("selection.added", { selectionId: selection.id, count: selectedElements.length });
+  } catch (error) {
+    if (error.message !== "Selection cancelled.") {
+      log.warn("picker.failed", { error });
+    }
+  } finally {
+    panel.hidden = false;
+    panel.querySelector("#perso-xxl-notes")?.focus();
+  }
+}
+
+function renderSelections() {
+  if (!panel) return;
+
+  const container = panel.querySelector('[data-role="selections"]');
+  container.replaceChildren();
+
+  if (selectedElements.length === 0) {
+    container.hidden = true;
+    return;
+  }
+
+  container.hidden = false;
+
+  for (const selection of selectedElements) {
+    const chip = document.createElement("span");
+    chip.className = "perso-xxl-selection-chip";
+    chip.innerHTML = `
+      <span>(pasted element)</span>
+      <button type="button" data-remove-selection="${selection.id}" aria-label="Remove selection">×</button>
+    `;
+    container.appendChild(chip);
+  }
+}
+
 async function generateAndApplyPlan() {
   await runPanelTask("Generating plan...", async () => {
     const prompt = panel.querySelector("#perso-xxl-notes").value.trim();
@@ -214,54 +263,45 @@ async function generateAndApplyPlan() {
     }
 
     const pageContext = buildPageContext();
+    const pageDom = window.PersoDomContext.collectPageDom();
     log.info("generation.started", {
       promptLength: prompt.length,
-      pageContext
-    });
-
-    const discovery = await window.PersoAiClient.discoverModificationScope({
-      prompt,
       pageContext,
-      availableAssets: getAvailableAssetSummaries()
+      selectionCount: selectedElements.length,
+      pageNodeCount: pageDom.nodeCount
     });
-    log.info("discovery.received", discovery);
-
-    const focusedDom = window.PersoDomCollector.collectFocusedDom({
-      ...discovery.domCollectionStrategy,
-      targetConcepts: discovery.targetConcepts,
-      candidateKinds: discovery.candidateKinds
-    });
-    log.info("focused_dom.collected", summarizeFocusedDomForLog(focusedDom));
 
     let plan = await window.PersoAiClient.generateTransformPlan({
       prompt,
-      discovery,
-      focusedDom,
+      pageContext,
+      pageDom,
+      selections: selectedElements,
       availableAssets: getAvailableAssetSummaries()
     });
     plan = attachAssetsToPlan(plan);
     log.info("generation.received", {
       site: plan.site,
       ruleCount: plan.rules?.length || 0,
-      targetRefs: Array.from(new Set((plan.rules || []).map((rule) => rule.targetRef || rule.target).filter(Boolean)))
+      targetRefs: Object.keys(plan.targetMap || {})
     });
 
-    let validation = window.PersoAiClient.validateTransformPlan(plan, focusedDom);
+    let validation = window.PersoAiClient.validateTransformPlan(plan);
     if (!validation.ok) {
       log.warn("generation.validation.failed", { errors: validation.errors });
       log.info("generation.repair.started");
 
       plan = await window.PersoAiClient.generateTransformPlan({
         prompt,
-        discovery,
-        focusedDom,
+        pageContext,
+        pageDom,
+        selections: selectedElements,
         availableAssets: getAvailableAssetSummaries(),
         previousPlan: plan,
         validationErrors: validation.errors
       });
       plan = attachAssetsToPlan(plan);
 
-      validation = window.PersoAiClient.validateTransformPlan(plan, focusedDom);
+      validation = window.PersoAiClient.validateTransformPlan(plan);
       if (!validation.ok) {
         log.warn("generation.repair.failed", { errors: validation.errors });
         throw new Error(`Generated plan failed validation: ${validation.errors.join(" ")}`);
@@ -269,7 +309,7 @@ async function generateAndApplyPlan() {
 
       log.info("generation.repair.passed", {
         ruleCount: plan.rules?.length || 0,
-        targetRefs: Array.from(new Set((plan.rules || []).map((rule) => rule.targetRef || rule.target).filter(Boolean)))
+        targetRefs: Object.keys(plan.targetMap || {})
       });
     }
     log.info("generation.validation.passed");
@@ -291,7 +331,7 @@ async function applySavedPlan() {
   await runPanelTask("Applying saved plan...", async () => {
     const state = await chrome.storage.local.get([getPlanStorageKey()]);
     const savedPlan = state[getPlanStorageKey()];
-    if (!savedPlan) throw new Error("No saved plan for this website yet.");
+    if (!savedPlan) throw new Error("No saved plan for this page yet.");
 
     log.info("plan.saved.apply.requested", { key: getPlanStorageKey(), ruleCount: savedPlan.rules?.length || 0 });
     currentPlan = savedPlan;
@@ -377,25 +417,12 @@ async function handleAssetChange(event) {
   });
 }
 
-function summarizeDomForLog(domSummary) {
-  return {
-    pageType: domSummary.pageType,
-    viewport: domSummary.viewport,
-    targets: (domSummary.targets || []).map((target) => ({
-      target: target.target,
-      count: target.count,
-      visibleCount: target.visible?.length || 0
-    }))
-  };
-}
-
 function buildPageContext() {
   return {
     url: location.href,
     hostname: location.hostname,
+    pathname: location.pathname,
     title: document.title,
-    adapter: location.hostname.includes("youtube.com") ? "youtube" : "generic",
-    pageType: adapter.getPageType(),
     viewport: {
       width: window.innerWidth,
       height: window.innerHeight
@@ -430,24 +457,8 @@ function attachAssetsToPlan(plan) {
   };
 }
 
-function summarizeFocusedDomForLog(focusedDom) {
-  return {
-    hostname: focusedDom.page.hostname,
-    candidateCount: focusedDom.candidates.length,
-    targetRefs: Object.keys(focusedDom.targetMap),
-    targetMap: Object.fromEntries(Object.entries(focusedDom.targetMap).map(([key, target]) => [
-      key,
-      {
-        selectorCount: target.selectors.length,
-        confidence: target.confidence,
-        candidateCount: target.candidateIds?.length || 0
-      }
-    ]))
-  };
-}
-
 function getPlanStorageKey() {
-  return `sitePlan:${location.hostname}`;
+  return `sitePlan:${location.hostname}:${location.pathname}`;
 }
 
 function setAssetStatus(message) {

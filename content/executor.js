@@ -6,13 +6,13 @@ window.PersoExecutor = (() => {
   const APPLIED_ATTR = "data-perso-xxl-rule";
   const originalState = new WeakMap();
 
-  function applyPlan(plan, adapter) {
-    if (!plan || !adapter) return;
+  function applyPlan(plan) {
+    if (!plan) return { totalMatched: 0 };
     let totalMatched = 0;
 
     log.info("executor.apply.started", {
       ruleCount: plan.rules?.length || 0,
-      targets: Array.from(new Set((plan.rules || []).map((rule) => rule.target).filter(Boolean)))
+      targetCount: Object.keys(plan.targetMap || {}).length
     });
 
     document.documentElement.setAttribute("data-perso-xxl-enabled", "true");
@@ -28,11 +28,11 @@ window.PersoExecutor = (() => {
           cssRules.push(rule.css);
         } else if (rule.type === "style") {
           targetCssRules.push(...buildTargetCssRules(rule, plan));
-          totalMatched += applyStyleRule(rule, adapter, plan);
+          totalMatched += applyStyleRule(rule, plan);
         } else if (rule.type === "visibility") {
-          totalMatched += applyVisibilityRule(rule, adapter, plan);
+          totalMatched += applyVisibilityRule(rule, plan);
         } else if (rule.type === "attribute") {
-          totalMatched += applyAttributeRule(rule, adapter, plan);
+          totalMatched += applyAttributeRule(rule, plan);
         }
       } catch (error) {
         log.warn("executor.rule.failed", { ruleId: rule?.id, ruleType: rule?.type, error });
@@ -89,21 +89,18 @@ window.PersoExecutor = (() => {
     upsertStyle(TARGET_STYLE_ID, cssRules.join("\n"));
   }
 
-  function applyStyleRule(rule, adapter, plan) {
-    const elements = resolveRuleElements(rule, adapter, plan);
+  function applyStyleRule(rule, plan) {
+    const elements = resolveRuleElements(rule, plan);
     log.debug("executor.rule.style", {
       ruleId: rule.id,
-      target: rule.targetRef || rule.target,
+      targetRef: rule.targetRef,
       matchCount: elements.length,
-      matched: summarizeElements(elements),
-      diagnostics: elements.length === 0 && rule.target === "thumbnail" ? adapter.getSelectorDiagnostics?.() : null
+      matched: summarizeElements(elements)
     });
+
     for (const element of elements) {
       rememberElement(element);
       mark(element, rule.id);
-      if (rule.target === "thumbnail" || /thumb|image|media/i.test(rule.targetRef || "")) {
-        element.style.overflow = "hidden";
-      }
       for (const [key, value] of Object.entries(rule.styles || {})) {
         const resolvedValue = resolveStyleValue(key, value, plan);
         if (resolvedValue) element.style[key] = resolvedValue;
@@ -112,9 +109,10 @@ window.PersoExecutor = (() => {
     return elements.length;
   }
 
-  function applyVisibilityRule(rule, adapter, plan) {
-    const elements = resolveRuleElements(rule, adapter, plan);
-    log.debug("executor.rule.visibility", { ruleId: rule.id, target: rule.targetRef || rule.target, action: rule.action, matchCount: elements.length });
+  function applyVisibilityRule(rule, plan) {
+    const elements = resolveRuleElements(rule, plan);
+    log.debug("executor.rule.visibility", { ruleId: rule.id, targetRef: rule.targetRef, action: rule.action, matchCount: elements.length });
+
     for (const element of elements) {
       rememberElement(element);
       mark(element, rule.id);
@@ -130,15 +128,16 @@ window.PersoExecutor = (() => {
     return elements.length;
   }
 
-  function applyAttributeRule(rule, adapter, plan) {
-    const elements = resolveRuleElements(rule, adapter, plan);
+  function applyAttributeRule(rule, plan) {
+    const elements = resolveRuleElements(rule, plan);
     log.debug("executor.rule.attribute", {
       ruleId: rule.id,
-      target: rule.targetRef || rule.target,
+      targetRef: rule.targetRef,
       attribute: rule.attribute,
       value: rule.value,
       matchCount: elements.length
     });
+
     for (const element of elements) {
       rememberElement(element);
       mark(element, rule.id);
@@ -163,12 +162,17 @@ window.PersoExecutor = (() => {
 
     originalState.set(element, {
       style: element.getAttribute("style"),
-      attributes: {
-        theater: element.getAttribute("theater"),
-        "mini-guide-visible": element.getAttribute("mini-guide-visible"),
-        "guide-persistent-and-visible": element.getAttribute("guide-persistent-and-visible")
-      }
+      attributes: collectStoredAttributes(element)
     });
+  }
+
+  function collectStoredAttributes(element) {
+    const attributes = {};
+    for (const attribute of Array.from(element.attributes)) {
+      if (attribute.name.startsWith("data-perso-xxl")) continue;
+      attributes[attribute.name] = attribute.value;
+    }
+    return attributes;
   }
 
   function restoreElement(element) {
@@ -180,12 +184,15 @@ window.PersoExecutor = (() => {
       element.setAttribute("style", original.style);
     }
 
-    for (const [attribute, value] of Object.entries(original?.attributes || {})) {
-      if (value === null) {
-        element.removeAttribute(attribute);
-      } else {
-        element.setAttribute(attribute, value);
+    const currentAttributes = collectStoredAttributes(element);
+    for (const attributeName of Object.keys(currentAttributes)) {
+      if (!(attributeName in (original?.attributes || {}))) {
+        element.removeAttribute(attributeName);
       }
+    }
+
+    for (const [attribute, value] of Object.entries(original?.attributes || {})) {
+      element.setAttribute(attribute, value);
     }
 
     element.removeAttribute(APPLIED_ATTR);
@@ -213,47 +220,7 @@ window.PersoExecutor = (() => {
   }
 
   function buildTargetCssRules(rule, plan) {
-    if (rule.targetRef) return buildTargetRefCssRule(rule, plan);
-    if (rule.target !== "thumbnail") return [];
-
-    const styles = normalizeThumbnailStyles(rule.styles || {});
-    if (!styles) return [];
-
-    const selector = [
-      "ytd-rich-item-renderer ytd-thumbnail",
-      "ytd-video-renderer ytd-thumbnail",
-      "ytd-grid-video-renderer ytd-thumbnail",
-      "ytd-rich-item-renderer ytd-thumbnail a#thumbnail",
-      "ytd-video-renderer ytd-thumbnail a#thumbnail",
-      "ytd-grid-video-renderer ytd-thumbnail a#thumbnail",
-      "ytd-rich-item-renderer ytd-thumbnail yt-image",
-      "ytd-video-renderer ytd-thumbnail yt-image",
-      "ytd-grid-video-renderer ytd-thumbnail yt-image",
-      "ytd-rich-item-renderer ytd-thumbnail img",
-      "ytd-video-renderer ytd-thumbnail img",
-      "ytd-grid-video-renderer ytd-thumbnail img",
-      "ytd-rich-item-renderer img.yt-core-image",
-      "ytd-video-renderer img.yt-core-image",
-      "ytd-grid-video-renderer img.yt-core-image",
-      "ytd-rich-grid-media #thumbnail",
-      "ytd-rich-grid-media img",
-      "ytd-rich-grid-media img.yt-core-image",
-      "a[href^='/watch'] img",
-      "img[src*='ytimg.com']",
-      "img[src*='i.ytimg.com']"
-    ].join(",\n");
-
-    log.info("executor.thumbnail.css.generated", {
-      ruleId: rule.id,
-      styles
-    });
-
-    return [`${selector} {\n${styles}\n}`];
-  }
-
-  function buildTargetRefCssRule(rule, plan) {
-    const target = plan.targetMap?.[rule.targetRef];
-    const selectors = sanitizeSelectors(target?.selectors || []);
+    const selectors = resolveTargetSelectors(plan.targetMap?.[rule.targetRef]);
     if (!selectors.length) return [];
 
     const declarations = normalizeStyleDeclarations(rule.styles || {}, { forceImportant: true, plan });
@@ -262,38 +229,10 @@ window.PersoExecutor = (() => {
     log.info("executor.target_ref.css.generated", {
       ruleId: rule.id,
       targetRef: rule.targetRef,
-      selectorCount: selectors.length,
-      declarations
+      selectorCount: selectors.length
     });
 
     return [`${selectors.join(",\n")} {\n${declarations}\n}`];
-  }
-
-  function normalizeThumbnailStyles(styles) {
-    const declarations = [];
-
-    if (styles.borderRadius) {
-      declarations.push(`  border-radius: ${safeCssValue(styles.borderRadius, "16px")} !important;`);
-      declarations.push("  overflow: hidden !important;");
-    }
-
-    if (styles.overflow) {
-      declarations.push(`  overflow: ${safeCssValue(styles.overflow, "hidden")} !important;`);
-    }
-
-    if (styles.aspectRatio) {
-      declarations.push(`  aspect-ratio: ${safeCssValue(styles.aspectRatio, "16 / 9")} !important;`);
-    }
-
-    if (styles.border) {
-      declarations.push(`  border: ${safeCssValue(styles.border, "none")} !important;`);
-    }
-
-    if (styles.boxShadow) {
-      declarations.push(`  box-shadow: ${safeCssValue(styles.boxShadow, "none")} !important;`);
-    }
-
-    return declarations.length > 0 ? declarations.join("\n") : "";
   }
 
   function normalizeStyleDeclarations(styles, options = {}) {
@@ -315,19 +254,21 @@ window.PersoExecutor = (() => {
     return declarations.length ? declarations.join("\n") : "";
   }
 
-  function resolveRuleElements(rule, adapter, plan) {
-    if (rule.targetRef) {
-      const selectors = sanitizeSelectors(plan.targetMap?.[rule.targetRef]?.selectors || []);
-      return uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
-    }
+  function resolveRuleElements(rule, plan) {
+    const selectors = resolveTargetSelectors(plan.targetMap?.[rule.targetRef]);
+    return uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
+  }
 
-    return adapter.queryTarget(rule.target);
+  function resolveTargetSelectors(target) {
+    const primary = sanitizeSelectors(target?.selectors || []);
+    if (primary.length > 0) return primary;
+    return sanitizeSelectors(target?.fallbackSelectors || []);
   }
 
   function sanitizeSelectors(selectors) {
     return selectors.filter((selector) => {
       if (typeof selector !== "string") return false;
-      if (selector.length > 180) return false;
+      if (selector.length > 240) return false;
       if (/[{};]/.test(selector)) return false;
       try {
         document.querySelector(selector);

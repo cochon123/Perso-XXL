@@ -42,80 +42,54 @@ window.PersoAiClient = (() => {
     "aspectRatio"
   ]);
 
-  const DISCOVERY_SCHEMA_HINT = {
-    intent: "restyle_existing_elements",
-    targetConcepts: ["thumbnail", "image"],
-    candidateKinds: ["image", "media"],
-    domCollectionStrategy: {
-      includeSelectors: ["img", "a img", "[class*='thumbnail' i]"],
-      includeAncestors: 3,
-      includeVisibleOnly: true,
-      maxCandidates: 80
-    },
-    expectedStyles: ["borderRadius", "overflow"]
-  };
-
   const TRANSFORM_SCHEMA_HINT = {
-    version: "1.1",
+    version: "2.0",
     site: {
       hostname: "example.com",
-      adapter: "generic"
+      pathname: "/",
+      urlPattern: "example.com/*"
     },
-    sourcePrompt: "Make thumbnails circular",
+    sourcePrompt: "Make the selected chip label red",
+    selections: [{
+      id: "sel_1",
+      tag: "div",
+      classes: ["ytSpecTouchFeedbackShapeFill"],
+      elementKind: "decorative",
+      semanticTarget: {
+        levelsUp: 2,
+        tag: "div",
+        classes: ["ytChipShapeChip"],
+        text: "Tous",
+        reason: "Clicked node looks decorative; parent 2 level(s) up contains the visible label or control."
+      }
+    }],
     targetMap: {
-      thumbnail: {
-        source: "focused-dom",
-        selectors: ["img", "a img"],
-        confidence: 0.75
+      chip_label: {
+        source: "selection",
+        selectionRef: "sel_1",
+        selectors: ["yt-chip-cloud-chip-renderer.iron-selected .ytChipShapeChip div"],
+        fallbackSelectors: ["button.ytChipShapeButtonReset .ytChipShapeChip div"]
       }
     },
     rules: [
       {
-        id: "round-thumbnails",
+        id: "red-chip-label",
         type: "style",
-        targetRef: "thumbnail",
-        styles: {
-          borderRadius: "50%",
-          overflow: "hidden"
-        }
+        targetRef: "chip_label",
+        styles: { color: "red" }
       }
     ]
   };
 
-  async function discoverModificationScope({ prompt, pageContext, availableAssets = [] }) {
-    const payload = await requestJson({
-      taskName: "target-discovery",
-      temperature: 0.2,
-      messages: [
-        {
-          role: "system",
-          content: [
-            "You are the target discovery stage for a browser extension.",
-            "Given a user prompt and lightweight page context, decide which visible page elements matter.",
-            "Do not create style rules.",
-            "Return only valid JSON matching the provided schema shape.",
-            "Prefer focused collection strategies over broad full-page collection."
-          ].join(" ")
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            prompt,
-            pageContext,
-            availableAssets,
-            schemaExample: DISCOVERY_SCHEMA_HINT,
-            allowedCandidateKinds: ["image", "media", "card", "button", "control", "text", "layout", "region"]
-          })
-        }
-      ]
-    });
-
-    return normalizeDiscovery(payload, prompt);
-  }
-
-  async function generateTransformPlan({ prompt, discovery, focusedDom, availableAssets = [], previousPlan = null, validationErrors = [] }) {
-    const availableTargetRefs = Object.keys(focusedDom?.targetMap || {});
-    const targetMap = focusedDom?.targetMap || {};
+  async function generateTransformPlan({
+    prompt,
+    pageContext,
+    pageDom,
+    selections = [],
+    availableAssets = [],
+    previousPlan = null,
+    validationErrors = []
+  }) {
     const payload = await requestJson({
       taskName: previousPlan ? "plan-repair" : "plan-generation",
       temperature: 0.35,
@@ -123,14 +97,28 @@ window.PersoAiClient = (() => {
         {
           role: "system",
           content: [
-            "You generate safe declarative website transform plans.",
+            "You generate safe declarative website transform plans for a browser extension.",
             "Return only valid JSON.",
-            "Never include JavaScript, event handlers, external URLs, network requests, or raw arbitrary selectors.",
-            "Use targetRef values from availableTargetRefs whenever possible.",
-            "If the user asks for one specific change, return only the minimal rules needed for that change.",
-            "For broad theme requests, create 4 to 8 conservative rules.",
+            "Never include JavaScript, event handlers, external URLs, network requests, or arbitrary executable code.",
+            "Use the page DOM summary and user-selected elements as grounding.",
+            "User selections mark what the user pointed at, but clicks often land on inner decorative nodes such as touch feedback, overlays, icons, or empty wrappers.",
+            "When the user says modify this element, they usually mean the visible control or label, often the parent or grandparent of the clicked node.",
+            "Each selection includes hierarchyCandidates and semanticTarget. Walk up the hierarchy when needed and prefer the ancestor that contains the visible text, label, or interactive control.",
+            "Do not target empty decorative layers when the prompt is about text color, labels, buttons, chips, tabs, links, or visible content.",
+            "For text styling, target the element that actually owns the visible text, or a parent wrapper whose children include that text.",
+            "Prefer specific scoped selectors from hierarchyCandidates or selectorHints over broad shared classes that match many unrelated elements.",
+            "User selections mark what the user pointed at. Infer broader targets when the prompt implies a class of elements, such as all video titles.",
+            "Build targetMap entries with CSS selectors that match the intended elements on this page.",
+            "Each targetMap entry must include selectors and may include fallbackSelectors.",
+            "If a target comes from a user selection, set source to selection and include selectionRef.",
+            "If a target is inferred from page patterns, set source to inferred.",
+            "Rules must reference targetRef values defined in targetMap.",
+            "Never put raw selectors on rules. Selectors belong in targetMap only.",
+            "If the user asks for one specific change, return only the minimal rules needed.",
+            "Prefer type style with a styles object for color, size, spacing, borders, backgrounds, and other standard CSS properties.",
+            "Use type css only when a raw CSS declaration block is truly necessary. css rules must include a css string field.",
+            "Do not use type css for simple property changes such as color red or font-size 16px.",
             "Use only allowed style properties.",
-            "Do not invent targetRefs that are not in availableTargetRefs.",
             "If an attached image should be used, set backgroundImage to asset:<assetId>, for example asset:uploadedImage.",
             "Never use local filesystem paths in CSS."
           ].join(" ")
@@ -140,13 +128,12 @@ window.PersoAiClient = (() => {
           content: JSON.stringify({
             task: previousPlan
               ? "Repair this transform plan so it passes validation. Return the full corrected plan."
-              : "Create a transform plan for the user's prompt using the focused DOM.",
+              : "Create a transform plan for the user's prompt.",
             prompt,
-            discovery,
-            focusedDom,
+            pageContext,
+            pageDom,
+            selections,
             availableAssets,
-            availableTargetRefs,
-            targetMap,
             allowedRuleTypes: ["css", "style", "visibility", "attribute"],
             allowedStyleKeys: ALLOWED_STYLE_KEYS_LIST,
             schemaExample: TRANSFORM_SCHEMA_HINT,
@@ -157,16 +144,7 @@ window.PersoAiClient = (() => {
       ]
     });
 
-    return {
-      ...payload,
-      version: payload.version || "1.1",
-      sourcePrompt: payload.sourcePrompt || prompt,
-      site: payload.site || {
-        hostname: location.hostname,
-        adapter: location.hostname.includes("youtube.com") ? "youtube" : "generic"
-      },
-      targetMap: payload.targetMap || targetMap
-    };
+    return normalizePlan(payload, prompt, pageContext, selections);
   }
 
   async function requestJson({ taskName, messages, temperature }) {
@@ -227,9 +205,9 @@ window.PersoAiClient = (() => {
     return JSON.parse(content);
   }
 
-  function validateTransformPlan(input, focusedDom = null) {
+  function validateTransformPlan(input) {
     const errors = [];
-    const targetRefs = new Set(Object.keys(input?.targetMap || focusedDom?.targetMap || {}));
+    const targetRefs = new Set(Object.keys(input?.targetMap || {}));
     log.info("plan.validation.started", {
       site: input?.site,
       ruleCount: Array.isArray(input?.rules) ? input.rules.length : null
@@ -240,6 +218,9 @@ window.PersoAiClient = (() => {
     }
 
     if (!input.site) errors.push("Plan must include site.");
+    if (!input.targetMap || typeof input.targetMap !== "object") {
+      errors.push("Plan must include targetMap.");
+    }
 
     if (!Array.isArray(input.rules)) {
       errors.push("Plan must include a rules array.");
@@ -249,9 +230,36 @@ window.PersoAiClient = (() => {
       input.rules.forEach((rule, index) => validateRule(rule, index, errors, targetRefs, input.assets || {}));
     }
 
+    validateTargetMap(input.targetMap || {}, errors, input.selections || []);
+
     const result = { ok: errors.length === 0, errors };
     log.info("plan.validation.finished", result);
     return result;
+  }
+
+  function validateTargetMap(targetMap, errors, selections) {
+    const selectionIds = new Set(selections.map((selection) => selection.id));
+
+    Object.entries(targetMap).forEach(([key, target]) => {
+      if (!target || typeof target !== "object") {
+        errors.push(`Target ${key} must be an object.`);
+        return;
+      }
+
+      if (!Array.isArray(target.selectors) || target.selectors.length === 0) {
+        errors.push(`Target ${key} must include selectors.`);
+      }
+
+      if (target.selectionRef && !selectionIds.has(target.selectionRef)) {
+        errors.push(`Target ${key} references unknown selectionRef ${target.selectionRef}.`);
+      }
+
+      for (const selector of [...(target.selectors || []), ...(target.fallbackSelectors || [])]) {
+        if (!isValidSelector(selector)) {
+          errors.push(`Target ${key} has invalid selector ${selector}.`);
+        }
+      }
+    });
   }
 
   function validateRule(rule, index, errors, targetRefs, assets) {
@@ -263,7 +271,7 @@ window.PersoAiClient = (() => {
     if (!ALLOWED_RULE_TYPES.has(rule.type)) errors.push(`Rule ${index} has unsupported type.`);
     if (rule.selector) errors.push(`Rule ${index} uses a raw selector. Use targetRef instead.`);
 
-    if (rule.type !== "css" && !rule.targetRef && !rule.target) {
+    if (rule.type !== "css" && !rule.targetRef) {
       errors.push(`Rule ${index} must include targetRef.`);
     }
 
@@ -296,61 +304,85 @@ window.PersoAiClient = (() => {
       errors.push(`Rule ${index} has unsupported visibility action.`);
     }
 
-    if (rule.type === "attribute" && !["theater", "mini-guide-visible", "guide-persistent-and-visible"].includes(rule.attribute)) {
-      errors.push(`Rule ${index} has unsupported attribute.`);
+    if (rule.type === "attribute" && typeof rule.attribute !== "string") {
+      errors.push(`Rule ${index} attribute rule must include attribute name.`);
     }
 
     if (rule.type === "css") {
       if (typeof rule.css !== "string" || rule.css.length > 5000) {
-        errors.push(`Rule ${index} CSS must be a short string.`);
+        const got = rule.css === undefined ? "missing" : typeof rule.css;
+        errors.push(`Rule ${index} css rules need rule.css as a string (got ${got}). Use type style with styles for property changes.`);
       } else if (/@import|url\s*\(|expression\s*\(|javascript:|position\s*:\s*fixed|z-index\s*:\s*9999/i.test(rule.css)) {
         errors.push(`Rule ${index} CSS contains a blocked pattern.`);
       }
     }
   }
 
-  function normalizeDiscovery(payload, prompt) {
-    const promptLower = prompt.toLowerCase();
-    const fallbackConcepts = /background/.test(promptLower)
-      ? ["background", "page"]
-      : /thumb|image|photo|picture|avatar/.test(promptLower)
-      ? ["thumbnail", "image"]
-      : ["selection"];
-    const fallbackKinds = /background/.test(promptLower) ? ["layout", "region"] : ["image", "media"];
+  function normalizePlan(payload, prompt, pageContext, selections) {
+    const rules = Array.isArray(payload.rules)
+      ? payload.rules.map((rule, index) => normalizeRule(rule, index))
+      : [];
 
     return {
-      intent: payload.intent || "restyle_existing_elements",
-      targetConcepts: Array.isArray(payload.targetConcepts) && payload.targetConcepts.length ? payload.targetConcepts : fallbackConcepts,
-      candidateKinds: Array.isArray(payload.candidateKinds) && payload.candidateKinds.length ? payload.candidateKinds : fallbackKinds,
-      domCollectionStrategy: {
-        includeSelectors: getDiscoverySelectors(payload, promptLower),
-        includeAncestors: payload.domCollectionStrategy?.includeAncestors ?? 3,
-        includeVisibleOnly: payload.domCollectionStrategy?.includeVisibleOnly !== false,
-        maxCandidates: payload.domCollectionStrategy?.maxCandidates || 80
+      ...payload,
+      version: payload.version || "2.0",
+      sourcePrompt: payload.sourcePrompt || prompt,
+      site: payload.site || {
+        hostname: pageContext.hostname,
+        pathname: pageContext.pathname,
+        urlPattern: `${pageContext.hostname}${pageContext.pathname}*`
       },
-      expectedStyles: payload.expectedStyles || []
+      selections: payload.selections || selections.map(({ id, tag, ariaLabel, text }) => ({
+        id,
+        tag,
+        ariaLabel,
+        text: text?.slice(0, 120)
+      })),
+      targetMap: payload.targetMap || {},
+      rules
     };
+  }
+
+  function normalizeRule(rule, index) {
+    if (!rule || typeof rule !== "object") return rule;
+
+    const normalized = { ...rule };
+    const styles = normalized.styles || normalized.style;
+
+    if (styles && typeof styles === "object" && !Array.isArray(styles)) {
+      normalized.styles = styles;
+      delete normalized.style;
+
+      if (normalized.type === "css" || !normalized.type) {
+        log.info("plan.rule.normalized", { index, from: normalized.type || "missing", to: "style" });
+        normalized.type = "style";
+        delete normalized.css;
+      }
+    }
+
+    if (normalized.type === "css" && typeof normalized.css !== "string" && normalized.css && typeof normalized.css === "object") {
+      log.info("plan.rule.normalized", { index, from: "css-object", to: "style" });
+      normalized.type = "style";
+      normalized.styles = normalized.css;
+      delete normalized.css;
+    }
+
+    return normalized;
+  }
+
+  function isValidSelector(selector) {
+    if (typeof selector !== "string" || selector.length > 240) return false;
+    if (/[{};]/.test(selector)) return false;
+
+    try {
+      document.querySelector(selector);
+      return true;
+    } catch (_error) {
+      return false;
+    }
   }
 
   const ALLOWED_STYLE_KEYS_LIST = Array.from(ALLOWED_STYLE_KEYS);
 
-  function getDiscoverySelectors(payload, promptLower) {
-    const selectors = payload.domCollectionStrategy?.includeSelectors || payload.includeSelectors || [];
-    if (/background/.test(promptLower)) {
-      return Array.from(new Set([
-        "html",
-        "body",
-        "main",
-        "#app",
-        "#root",
-        "ytd-app",
-        "ytd-page-manager#page-manager",
-        ...selectors
-      ]));
-    }
-
-    return selectors;
-  }
-
-  return { discoverModificationScope, generateTransformPlan, validateTransformPlan };
+  return { generateTransformPlan, validateTransformPlan };
 })();
