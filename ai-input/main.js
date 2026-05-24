@@ -1143,13 +1143,15 @@ if (!prefersReducedMotion) {
   });
   }
 
-  gsap.from('.ai-input', {
-    y: 30,
-    opacity: 0,
-    duration: 0.85,
-    delay: isPlayground ? 0.25 : 0,
-    ease: 'back.out(1.2)',
-  });
+  if (isPlayground) {
+    gsap.from('.ai-input', {
+      y: 30,
+      opacity: 0,
+      duration: 0.85,
+      delay: 0.25,
+      ease: 'back.out(1.2)',
+    });
+  }
 }
 
 } /* end aiInput guard */

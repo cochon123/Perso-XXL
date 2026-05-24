@@ -41,27 +41,9 @@ html[data-perso-xxl-enabled="true"] {
   background: transparent;
 }
 
-#perso-xxl-panel .ai-input {
-  --ai-padding-y: 8;
-  --ai-bg: rgba(22, 14, 20, 0.94);
-  --ai-border: rgba(255, 45, 122, 0.38);
-  --ai-placeholder: rgba(250, 248, 249, 0.52);
-  --ai-backdrop-blur: 10;
-  background: rgba(22, 14, 20, 0.94);
-  border-color: rgba(255, 45, 122, 0.38);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-#perso-xxl-panel .ai-input__editor {
-  font-family: "Chewy", system-ui, sans-serif;
-  line-height: calc(var(--ai-btn-size) * 1px);
-  padding: 0 6px;
-}
-
+#perso-xxl-panel .ai-input__editor,
 #perso-xxl-panel .ai-input__placeholder {
-  color: rgba(250, 248, 249, 0.52);
-  font-family: "Chewy", system-ui, sans-serif;
+  font-family: inherit;
 }
 
 #perso-xxl-panel[hidden] {

@@ -1,0 +1,16 @@
+/* Shared embed theme — load AFTER component.css on landing & extension.
+   Playground defaults (0.72 bg) look fine on a dark stage; on photos / page
+   content the bar needs a touch more opacity to match the same visual weight. */
+
+.productivity-ai-wrap .ai-input,
+#perso-xxl-panel .ai-input {
+  --ai-bg: rgba(22, 14, 20, 0.94);
+  --ai-border: rgba(255, 45, 122, 0.38);
+  --ai-placeholder: rgba(250, 248, 249, 0.52);
+  --ai-backdrop-blur: 10;
+}
+
+.productivity-ai-wrap .ai-input__placeholder,
+#perso-xxl-panel .ai-input__placeholder {
+  color: rgba(250, 248, 249, 0.52);
+}

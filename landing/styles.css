@@ -685,21 +685,6 @@ a { color: inherit; text-decoration: none; }
   width: 100%;
 }
 
-.productivity-ai-wrap .ai-input {
-  --ai-bg: rgba(22, 14, 20, 0.94);
-  --ai-border: rgba(255, 45, 122, 0.38);
-  --ai-placeholder: rgba(250, 248, 249, 0.52);
-  --ai-backdrop-blur: 10;
-  background: rgba(22, 14, 20, 0.94);
-  border-color: rgba(255, 45, 122, 0.38);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.productivity-ai-wrap .ai-input__placeholder {
-  color: rgba(250, 248, 249, 0.52);
-}
-
 .productivity-ai-wrap .preview-stack {
   width: min(calc(var(--ai-width) * 1px), 100%);
   margin-top: 246px;
