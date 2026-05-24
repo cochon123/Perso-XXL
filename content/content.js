@@ -1,8 +1,9 @@
 const log = window.PersoLogger;
-const CONTENT_VERSION = "0.3.0-picker-pipeline";
+const CONTENT_VERSION = "0.4.0-ai-input";
 let currentPlan = null;
 let applyTimer = null;
 let panel = null;
+let aiInput = null;
 let suppressMutationApplyUntil = 0;
 let zeroMatchRetryCount = 0;
 let uploadedAsset = null;
@@ -121,21 +122,8 @@ function createPanel() {
       <strong>Perso XXL</strong>
       <button type="button" data-action="close" aria-label="Close">×</button>
     </header>
-    <label for="perso-xxl-notes">What do you want to change?</label>
-    <div class="perso-xxl-prompt-row">
-      <textarea id="perso-xxl-notes" rows="4" placeholder="Example: Remove this button."></textarea>
-      <button type="button" data-action="pick" class="secondary perso-xxl-pick-button" title="Select element">◎</button>
-    </div>
-    <div class="perso-xxl-selections" data-role="selections" hidden></div>
-    <div class="perso-xxl-asset-row">
-      <label class="perso-xxl-file-button">
-        Attach image
-        <input id="perso-xxl-asset" type="file" accept="image/*">
-      </label>
-      <span data-role="asset-status">No image attached</span>
-    </div>
+    <div class="perso-xxl-ai-stack">${window.PersoAiInput.MARKUP}</div>
     <div class="perso-xxl-actions">
-      <button type="button" data-action="generate">Generate and apply</button>
       <button type="button" data-action="apply" class="secondary">Apply saved</button>
       <button type="button" data-action="revert" class="danger">Revert</button>
     </div>
@@ -147,25 +135,30 @@ function createPanel() {
   `;
 
   root.addEventListener("click", handlePanelClick);
-  root.querySelector("#perso-xxl-asset").addEventListener("change", handleAssetChange);
-  root.querySelector('[data-role="selections"]').addEventListener("click", handleSelectionClick);
+
+  const stack = root.querySelector(".perso-xxl-ai-stack");
+  aiInput = window.PersoAiInput.init(stack, {
+    onSend: handleAiSend,
+    onPick: handleAiPick,
+    onImage: handleAiImage,
+    onRemoveToken: handleAiRemoveToken
+  });
+
   return root;
 }
 
 async function loadPanelState() {
   const state = await chrome.storage.local.get(["profileNotes", getPlanStorageKey()]);
-  const notes = panel.querySelector("#perso-xxl-notes");
   const savedPlan = state[getPlanStorageKey()];
 
-  if (state.profileNotes) notes.value = state.profileNotes;
+  if (state.profileNotes) aiInput.setPromptText(state.profileNotes);
   if (savedPlan) renderPlan(savedPlan);
-  renderSelections();
   log.info("panel.state.loaded", {
     hasProfileNotes: Boolean(state.profileNotes),
     hasSavedPlan: Boolean(savedPlan),
     key: getPlanStorageKey()
   });
-  notes.focus();
+  aiInput.focus();
 }
 
 async function handlePanelClick(event) {
@@ -175,16 +168,6 @@ async function handlePanelClick(event) {
   if (action === "close") {
     panel.hidden = true;
     log.info("panel.closed");
-    return;
-  }
-
-  if (action === "pick") {
-    await startElementPick();
-    return;
-  }
-
-  if (action === "generate") {
-    await generateAndApplyPlan();
     return;
   }
 
@@ -198,17 +181,26 @@ async function handlePanelClick(event) {
   }
 }
 
-function handleSelectionClick(event) {
-  const removeId = event.target?.dataset?.removeSelection;
-  if (!removeId) return;
+async function handleAiSend(prompt) {
+  if (!prompt) throw new Error("Type what you want to change first.");
+  if (hasLocalPath(prompt) && !uploadedAsset) {
+    throw new Error("Attach the image file instead of typing its local path.");
+  }
 
-  selectedElements = selectedElements.filter((selection) => selection.id !== removeId);
-  renderSelections();
-  log.info("selection.removed", { selectionId: removeId, remaining: selectedElements.length });
+  try {
+    await generatePlanFromPrompt(prompt);
+    selectedElements = [];
+    uploadedAsset = null;
+    setPanelStatus("Plan generated and applied.");
+  } catch (error) {
+    setPanelStatus(error.message || String(error));
+    log.error("panel.task.failed", { error });
+    throw error;
+  }
 }
 
-async function startElementPick() {
-  if (!panel || window.PersoPicker.isActive()) return;
+async function handleAiPick() {
+  if (!panel || window.PersoPicker.isActive()) return null;
 
   panel.hidden = true;
   log.info("picker.requested");
@@ -218,113 +210,133 @@ async function startElementPick() {
     selectionCounter += 1;
     const selection = window.PersoDomContext.buildSelection(element, `sel_${selectionCounter}`);
     selectedElements.push(selection);
-    renderSelections();
     log.info("selection.added", { selectionId: selection.id, count: selectedElements.length });
+    return {
+      type: "pick",
+      label: formatSelectionLabel(selection),
+      selectionId: selection.id
+    };
   } catch (error) {
     if (error.message !== "Selection cancelled.") {
       log.warn("picker.failed", { error });
     }
+    throw error;
   } finally {
     panel.hidden = false;
-    panel.querySelector("#perso-xxl-notes")?.focus();
+    aiInput?.focus();
   }
 }
 
-function renderSelections() {
-  if (!panel) return;
+async function handleAiImage(file) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Only image files are supported");
+  }
 
-  const container = panel.querySelector('[data-role="selections"]');
-  container.replaceChildren();
+  uploadedAsset = {
+    assetId: "uploadedImage",
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    dataUrl: await readFileAsDataUrl(file)
+  };
+  log.info("asset.attached", {
+    assetId: uploadedAsset.assetId,
+    name: uploadedAsset.name,
+    type: uploadedAsset.type,
+    size: uploadedAsset.size
+  });
 
-  if (selectedElements.length === 0) {
-    container.hidden = true;
+  return {
+    type: "image",
+    label: file.name,
+    url: URL.createObjectURL(file)
+  };
+}
+
+function handleAiRemoveToken(stored) {
+  if (stored.type === "pick" && stored.selectionId) {
+    selectedElements = selectedElements.filter((selection) => selection.id !== stored.selectionId);
+    log.info("selection.removed", { selectionId: stored.selectionId, remaining: selectedElements.length });
     return;
   }
 
-  container.hidden = false;
-
-  for (const selection of selectedElements) {
-    const chip = document.createElement("span");
-    chip.className = "perso-xxl-selection-chip";
-    chip.innerHTML = `
-      <span>(pasted element)</span>
-      <button type="button" data-remove-selection="${selection.id}" aria-label="Remove selection">×</button>
-    `;
-    container.appendChild(chip);
+  if (stored.type === "image") {
+    uploadedAsset = null;
+    log.info("asset.removed");
   }
 }
 
-async function generateAndApplyPlan() {
-  await runPanelTask("Generating plan...", async () => {
-    const prompt = panel.querySelector("#perso-xxl-notes").value.trim();
-    if (!prompt) throw new Error("Type what you want to change first.");
-    if (hasLocalPath(prompt) && !uploadedAsset) {
-      throw new Error("Attach the image file instead of typing its local path.");
-    }
+function formatSelectionLabel(selection) {
+  const hint = selection.selectorHints?.[0];
+  if (hint) return hint;
+  const className = selection.classes?.[0];
+  if (selection.idAttr) return `${selection.tag}#${selection.idAttr}`;
+  if (className) return `${selection.tag}.${className}`;
+  return selection.tag || "element";
+}
 
-    const pageContext = buildPageContext();
-    const pageDom = window.PersoDomContext.collectPageDom();
-    log.info("generation.started", {
-      promptLength: prompt.length,
-      pageContext,
-      selectionCount: selectedElements.length,
-      pageNodeCount: pageDom.nodeCount
-    });
+async function generatePlanFromPrompt(prompt) {
+  const pageContext = buildPageContext();
+  const pageDom = window.PersoDomContext.collectPageDom();
+  log.info("generation.started", {
+    promptLength: prompt.length,
+    pageContext,
+    selectionCount: selectedElements.length,
+    pageNodeCount: pageDom.nodeCount
+  });
 
-    let plan = await window.PersoAiClient.generateTransformPlan({
+  let plan = await window.PersoAiClient.generateTransformPlan({
+    prompt,
+    pageContext,
+    pageDom,
+    selections: selectedElements,
+    availableAssets: getAvailableAssetSummaries()
+  });
+  plan = attachAssetsToPlan(plan);
+  log.info("generation.received", {
+    site: plan.site,
+    ruleCount: plan.rules?.length || 0,
+    targetRefs: Object.keys(plan.targetMap || {})
+  });
+
+  let validation = window.PersoAiClient.validateTransformPlan(plan);
+  if (!validation.ok) {
+    log.warn("generation.validation.failed", { errors: validation.errors });
+    log.info("generation.repair.started");
+
+    plan = await window.PersoAiClient.generateTransformPlan({
       prompt,
       pageContext,
       pageDom,
       selections: selectedElements,
-      availableAssets: getAvailableAssetSummaries()
+      availableAssets: getAvailableAssetSummaries(),
+      previousPlan: plan,
+      validationErrors: validation.errors
     });
     plan = attachAssetsToPlan(plan);
-    log.info("generation.received", {
-      site: plan.site,
+
+    validation = window.PersoAiClient.validateTransformPlan(plan);
+    if (!validation.ok) {
+      log.warn("generation.repair.failed", { errors: validation.errors });
+      throw new Error(`Generated plan failed validation: ${validation.errors.join(" ")}`);
+    }
+
+    log.info("generation.repair.passed", {
       ruleCount: plan.rules?.length || 0,
       targetRefs: Object.keys(plan.targetMap || {})
     });
+  }
+  log.info("generation.validation.passed");
 
-    let validation = window.PersoAiClient.validateTransformPlan(plan);
-    if (!validation.ok) {
-      log.warn("generation.validation.failed", { errors: validation.errors });
-      log.info("generation.repair.started");
-
-      plan = await window.PersoAiClient.generateTransformPlan({
-        prompt,
-        pageContext,
-        pageDom,
-        selections: selectedElements,
-        availableAssets: getAvailableAssetSummaries(),
-        previousPlan: plan,
-        validationErrors: validation.errors
-      });
-      plan = attachAssetsToPlan(plan);
-
-      validation = window.PersoAiClient.validateTransformPlan(plan);
-      if (!validation.ok) {
-        log.warn("generation.repair.failed", { errors: validation.errors });
-        throw new Error(`Generated plan failed validation: ${validation.errors.join(" ")}`);
-      }
-
-      log.info("generation.repair.passed", {
-        ruleCount: plan.rules?.length || 0,
-        targetRefs: Object.keys(plan.targetMap || {})
-      });
-    }
-    log.info("generation.validation.passed");
-
-    currentPlan = plan;
-    zeroMatchRetryCount = 0;
-    await chrome.storage.local.set({
-      profileNotes: prompt,
-      [getPlanStorageKey()]: plan
-    });
-    log.info("storage.saved", { key: getPlanStorageKey(), hasProfileNotes: Boolean(prompt), ruleCount: plan.rules?.length || 0 });
-    applyCurrentPlan();
-    renderPlan(plan);
-    return "Plan generated and applied.";
+  currentPlan = plan;
+  zeroMatchRetryCount = 0;
+  await chrome.storage.local.set({
+    profileNotes: prompt,
+    [getPlanStorageKey()]: plan
   });
+  log.info("storage.saved", { key: getPlanStorageKey(), hasProfileNotes: Boolean(prompt), ruleCount: plan.rules?.length || 0 });
+  applyCurrentPlan();
+  renderPlan(plan);
 }
 
 async function applySavedPlan() {
@@ -377,7 +389,8 @@ function setPanelStatus(message) {
 }
 
 function setPanelDisabled(disabled) {
-  panel.querySelectorAll("button, textarea").forEach((element) => {
+  aiInput?.setDisabled(disabled);
+  panel.querySelectorAll("button[data-action]").forEach((element) => {
     if (element.dataset.action !== "close") element.disabled = disabled;
   });
 }
@@ -385,36 +398,6 @@ function setPanelDisabled(disabled) {
 function renderPlan(plan) {
   if (!panel) return;
   panel.querySelector('[data-role="plan"]').textContent = plan ? JSON.stringify(plan, null, 2) : "";
-}
-
-async function handleAssetChange(event) {
-  const file = event.target.files?.[0];
-  if (!file) {
-    uploadedAsset = null;
-    setAssetStatus("No image attached");
-    return;
-  }
-
-  if (!file.type.startsWith("image/")) {
-    uploadedAsset = null;
-    setAssetStatus("Only image files are supported");
-    return;
-  }
-
-  uploadedAsset = {
-    assetId: "uploadedImage",
-    name: file.name,
-    type: file.type,
-    size: file.size,
-    dataUrl: await readFileAsDataUrl(file)
-  };
-  setAssetStatus(file.name);
-  log.info("asset.attached", {
-    assetId: uploadedAsset.assetId,
-    name: uploadedAsset.name,
-    type: uploadedAsset.type,
-    size: uploadedAsset.size
-  });
 }
 
 function buildPageContext() {
@@ -459,10 +442,6 @@ function attachAssetsToPlan(plan) {
 
 function getPlanStorageKey() {
   return `sitePlan:${location.hostname}:${location.pathname}`;
-}
-
-function setAssetStatus(message) {
-  panel?.querySelector('[data-role="asset-status"]')?.replaceChildren(document.createTextNode(message));
 }
 
 function readFileAsDataUrl(file) {

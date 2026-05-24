@@ -111,14 +111,22 @@ const slider = document.getElementById('comparison-slider');
 const boringLetters = [...document.querySelectorAll('.word-boring .letter')];
 const funLetters = [...document.querySelectorAll('.word-fun .letter')];
 
+let boringThresholds = [];
+let funThresholds = [];
 const boringCrossed = new Set();
 const funCrossed = new Set();
+let comparisonReady = false;
 
-function getLetterPositions(letters, container) {
+function cacheLetterThresholds() {
   const stageRect = comparisonPin.getBoundingClientRect();
-  return letters.map((letter) => {
+  const stageW = stageRect.width || window.innerWidth;
+  boringThresholds = boringLetters.map((letter) => {
     const rect = letter.getBoundingClientRect();
-    return (rect.left + rect.width / 2 - stageRect.left) / stageRect.width;
+    return (rect.left + rect.width / 2 - stageRect.left) / stageW;
+  });
+  funThresholds = funLetters.map((letter) => {
+    const rect = letter.getBoundingClientRect();
+    return (rect.left + rect.width / 2 - stageRect.left) / stageW;
   });
 }
 
@@ -151,43 +159,87 @@ function animateLetter(letter, type) {
   }
 }
 
-ScrollTrigger.create({
-  trigger: comparisonSection,
-  start: 'top top',
-  end: 'bottom bottom',
-  pin: comparisonPin,
-  scrub: 0.5,
-  onUpdate: (self) => {
-    const progress = self.progress;
-    const clipRight = (1 - progress) * 100;
+function applyComparisonProgress(progress) {
+  const p = gsap.utils.clamp(0, 1, progress);
+  const clipLeft = p * 100;
 
-    layerBefore.style.clipPath = `inset(0 ${clipRight}% 0 0)`;
-    slider.style.left = `${progress * 100}%`;
+  layerBefore.style.clipPath = `inset(0 0 0 ${clipLeft}%)`;
+  slider.style.left = `${p * 100}%`;
 
-    const boringPositions = getLetterPositions(boringLetters, comparisonPin);
-    boringLetters.forEach((letter, i) => {
-      if (progress > boringPositions[i] && !boringCrossed.has(i)) {
-        boringCrossed.add(i);
-        animateLetter(letter, 'boring');
-      } else if (progress <= boringPositions[i] && boringCrossed.has(i)) {
-        boringCrossed.delete(i);
+  boringLetters.forEach((letter, i) => {
+    if (p > boringThresholds[i] && !boringCrossed.has(i)) {
+      boringCrossed.add(i);
+      animateLetter(letter, 'boring');
+    } else if (p <= boringThresholds[i] && boringCrossed.has(i)) {
+      boringCrossed.delete(i);
+      letter.classList.remove('pop-boring');
+      gsap.set(letter, { clearProps: 'all' });
+    }
+  });
+
+  funLetters.forEach((letter, i) => {
+    if (p > funThresholds[i] && !funCrossed.has(i)) {
+      funCrossed.add(i);
+      animateLetter(letter, 'fun');
+    } else if (p <= funThresholds[i] && funCrossed.has(i)) {
+      funCrossed.delete(i);
+      letter.classList.remove('pop-fun');
+      gsap.set(letter, { opacity: 0.3, scale: 0.8, rotation: 0, y: 0 });
+    }
+  });
+}
+
+function initComparisonScroll() {
+  if (comparisonReady) return;
+  comparisonReady = true;
+
+  cacheLetterThresholds();
+  applyComparisonProgress(0);
+
+  ScrollTrigger.create({
+    id: 'comparison-reveal',
+    trigger: comparisonSection,
+    start: 'top top',
+    end: '+=200%',
+    pin: comparisonPin,
+    scrub: true,
+    anticipatePin: 1,
+    invalidateOnRefresh: true,
+    onUpdate: (self) => applyComparisonProgress(self.progress),
+    onRefreshInit: () => {
+      boringCrossed.clear();
+      funCrossed.clear();
+      boringLetters.forEach((letter) => {
         letter.classList.remove('pop-boring');
         gsap.set(letter, { clearProps: 'all' });
-      }
-    });
-
-    const funPositions = getLetterPositions(funLetters, comparisonPin);
-    funLetters.forEach((letter, i) => {
-      if (progress > funPositions[i] && !funCrossed.has(i)) {
-        funCrossed.add(i);
-        animateLetter(letter, 'fun');
-      } else if (progress <= funPositions[i] && funCrossed.has(i)) {
-        funCrossed.delete(i);
+      });
+      funLetters.forEach((letter) => {
         letter.classList.remove('pop-fun');
         gsap.set(letter, { opacity: 0.3, scale: 0.8, rotation: 0, y: 0 });
-      }
-    });
-  },
+      });
+    },
+    onRefresh: (self) => {
+      cacheLetterThresholds();
+      applyComparisonProgress(self.progress);
+    },
+  });
+}
+
+const comparisonImages = comparisonSection.querySelectorAll('.comparison-img');
+Promise.all(
+  [...comparisonImages].map(
+    (img) =>
+      new Promise((resolve) => {
+        if (img.complete) resolve();
+        else {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        }
+      })
+  )
+).then(() => {
+  initComparisonScroll();
+  ScrollTrigger.refresh();
 });
 
 /* Slider knob pulse while in view */

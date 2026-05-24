@@ -379,7 +379,6 @@ a { color: inherit; text-decoration: none; }
 /* ── Comparison (before/after) ── */
 .comparison {
   position: relative;
-  height: 300vh;
 }
 
 .comparison-pin {
@@ -387,6 +386,7 @@ a { color: inherit; text-decoration: none; }
   height: 100vh;
   width: 100%;
   overflow: hidden;
+  will-change: transform;
 }
 
 .comparison-stage {
@@ -404,10 +404,6 @@ a { color: inherit; text-decoration: none; }
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.comparison-img.desaturated {
-  filter: grayscale(100%) contrast(0.85) brightness(0.85);
 }
 
 .comparison-vignette {
@@ -764,7 +760,6 @@ a { color: inherit; text-decoration: none; }
   .split { grid-template-columns: 1fr; gap: 2rem; }
   .card-stack { height: 280px; }
   .stack-card { width: 220px; }
-  .comparison { height: 250vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
