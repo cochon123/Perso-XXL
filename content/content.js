@@ -1,12 +1,11 @@
 const log = window.PersoLogger;
-const CONTENT_VERSION = "0.3.0-picker-pipeline";
+const CONTENT_VERSION = "0.6.0-landing-ai-input";
 let currentPlan = null;
 let applyTimer = null;
+/** @type {HTMLElement | null} */
 let panel = null;
 let suppressMutationApplyUntil = 0;
 let zeroMatchRetryCount = 0;
-let uploadedAsset = null;
-let selectedElements = [];
 let selectionCounter = 0;
 
 log.info("content.loaded", {
@@ -101,320 +100,328 @@ function isPersoNode(node) {
 }
 
 function togglePanel() {
-  if (!panel) {
-    panel = createPanel();
-    document.documentElement.appendChild(panel);
-    log.info("panel.created");
-    loadPanelState();
-    return;
-  }
-
+  if (!panel) return;
   panel.hidden = !panel.hidden;
   log.info("panel.visibility.changed", { hidden: panel.hidden });
+  if (!panel.hidden) loadPanelState();
+}
+
+function createAiInputMarkup() {
+  return `
+    <div class="preview-stack" id="preview-stack">
+      <div class="ai-sent-list" id="sent-list" aria-live="polite"></div>
+
+      <div class="ai-input" id="ai-input" data-state="idle" data-multiline="false">
+        <div class="ai-input__body">
+          <div class="ai-input__left">
+            <button
+              type="button"
+              class="ai-input__btn ai-input__btn--attach"
+              id="attach-toggle"
+              aria-label="Add attachment"
+              aria-expanded="false"
+              aria-haspopup="menu"
+            >
+              <svg class="ai-input__icon ai-input__icon--plus" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span class="ai-input__loader" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <g transform="translate(12 12)">
+                    <circle r="9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="28 56" transform="rotate(-90)"/>
+                  </g>
+                </svg>
+              </span>
+            </button>
+
+            <div class="ai-input__menu" id="attach-menu" role="menu" hidden>
+              <button type="button" class="ai-input__menu-item" role="menuitem" data-action="image">
+                <span class="ai-input__menu-icon">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.75"/>
+                    <circle cx="8.5" cy="10.5" r="1.75" fill="currentColor"/>
+                    <path d="M21 16l-5.5-5.5a1.5 1.5 0 0 0-2.12 0L3 19" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                  </svg>
+                </span>
+                <span class="ai-input__menu-text">
+                  <strong>Add image</strong>
+                  <small>Upload a reference</small>
+                </span>
+              </button>
+              <button type="button" class="ai-input__menu-item" role="menuitem" data-action="pick">
+                <span class="ai-input__menu-icon">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 4l7 16 2.5-6.5L20 11 4 4z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+                    <path d="M13 13l6 6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                  </svg>
+                </span>
+                <span class="ai-input__menu-text">
+                  <strong>Pick from page</strong>
+                  <small>Select an element</small>
+                </span>
+              </button>
+            </div>
+
+            <input type="file" id="image-input" accept="image/*" hidden />
+          </div>
+
+          <div class="ai-input__field-wrap">
+            <div
+              class="ai-input__editor"
+              id="prompt-editor"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Describe what you want to change"
+              spellcheck="true"
+            ></div>
+            <span class="ai-input__placeholder" id="prompt-placeholder" aria-hidden="true">
+              Describe what you want to change…
+            </span>
+            <div class="ai-input__status" id="input-status" hidden>
+              <div class="ai-input__status-viewport">
+                <div class="ai-input__status-line" id="status-line">
+                  <span class="ai-input__status-label" id="status-label"></span>
+                  <span class="ai-input__dots" id="status-dots" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="ai-input__btn ai-input__btn--send"
+            id="send-btn"
+            aria-label="Send prompt"
+            disabled
+          >
+            <svg class="ai-input__icon ai-input__icon--send" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="ai-input__send-revert" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 20.75C10.078 20.7474 8.23546 19.9827 6.8764 18.6236C5.51733 17.2645 4.75265 15.422 4.75 13.5C4.75 13.3011 4.82902 13.1103 4.96967 12.9697C5.11032 12.829 5.30109 12.75 5.5 12.75C5.69891 12.75 5.88968 12.829 6.03033 12.9697C6.17098 13.1103 6.25 13.3011 6.25 13.5C6.25 14.6372 6.58723 15.7489 7.21905 16.6945C7.85087 17.6401 8.74889 18.3771 9.79957 18.8123C10.8502 19.2475 12.0064 19.3614 13.1218 19.1395C14.2372 18.9177 15.2617 18.37 16.0659 17.5659C16.87 16.7617 17.4177 15.7372 17.6395 14.6218C17.8614 13.5064 17.7475 12.3502 17.3123 11.2996C16.8771 10.2489 16.1401 9.35087 15.1945 8.71905C14.2489 8.08723 13.1372 7.75 12 7.75H9.5C9.30109 7.75 9.11032 7.67098 8.96967 7.53033C8.82902 7.38968 8.75 7.19891 8.75 7C8.75 6.80109 8.82902 6.61032 8.96967 6.46967C9.11032 6.32902 9.30109 6.25 9.5 6.25H12C13.9228 6.25 15.7669 7.01384 17.1265 8.37348C18.4862 9.73311 19.25 11.5772 19.25 13.5C19.25 15.4228 18.4862 17.2669 17.1265 18.6265C15.7669 19.9862 13.9228 20.75 12 20.75Z" fill="currentColor"/>
+                <path d="M12 10.75C11.9015 10.7505 11.8038 10.7313 11.7128 10.6935C11.6218 10.6557 11.5393 10.6001 11.47 10.53L8.47001 7.53003C8.32956 7.38941 8.25067 7.19878 8.25067 7.00003C8.25067 6.80128 8.32956 6.61066 8.47001 6.47003L11.47 3.47003C11.5387 3.39634 11.6215 3.33724 11.7135 3.29625C11.8055 3.25526 11.9048 3.23322 12.0055 3.23144C12.1062 3.22966 12.2062 3.24819 12.2996 3.28591C12.393 3.32363 12.4778 3.37977 12.549 3.45099C12.6203 3.52221 12.6764 3.60705 12.7141 3.70043C12.7519 3.79382 12.7704 3.89385 12.7686 3.99455C12.7668 4.09526 12.7448 4.19457 12.7038 4.28657C12.6628 4.37857 12.6037 4.46137 12.53 4.53003L10.06 7.00003L12.53 9.47003C12.6705 9.61066 12.7494 9.80128 12.7494 10C12.7494 10.1988 12.6705 10.3894 12.53 10.53C12.4608 10.6001 12.3782 10.6557 12.2872 10.6935C12.1962 10.7313 12.0986 10.7505 12 10.75Z" fill="currentColor"/>
+              </svg>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="toast productivity-toast" id="toast" role="status" aria-live="polite"></div>
+  `;
 }
 
 function createPanel() {
   const root = document.createElement("section");
   root.id = "perso-xxl-panel";
-  root.innerHTML = `
-    <header>
-      <strong>Perso XXL</strong>
-      <button type="button" data-action="close" aria-label="Close">×</button>
-    </header>
-    <label for="perso-xxl-notes">What do you want to change?</label>
-    <div class="perso-xxl-prompt-row">
-      <textarea id="perso-xxl-notes" rows="4" placeholder="Example: Remove this button."></textarea>
-      <button type="button" data-action="pick" class="secondary perso-xxl-pick-button" title="Select element">◎</button>
-    </div>
-    <div class="perso-xxl-selections" data-role="selections" hidden></div>
-    <div class="perso-xxl-asset-row">
-      <label class="perso-xxl-file-button">
-        Attach image
-        <input id="perso-xxl-asset" type="file" accept="image/*">
-      </label>
-      <span data-role="asset-status">No image attached</span>
-    </div>
-    <div class="perso-xxl-actions">
-      <button type="button" data-action="generate">Generate and apply</button>
-      <button type="button" data-action="apply" class="secondary">Apply saved</button>
-      <button type="button" data-action="revert" class="danger">Revert</button>
-    </div>
-    <p data-role="status">Ready</p>
-    <details>
-      <summary>Current plan</summary>
-      <pre data-role="plan"></pre>
-    </details>
-  `;
-
-  root.addEventListener("click", handlePanelClick);
-  root.querySelector("#perso-xxl-asset").addEventListener("change", handleAssetChange);
-  root.querySelector('[data-role="selections"]').addEventListener("click", handleSelectionClick);
+  root.hidden = true;
+  root.innerHTML = createAiInputMarkup();
   return root;
+}
+
+function initExtensionHost() {
+  window.PersoExtension = {
+    enabled: true,
+
+    async pickElement() {
+      if (!panel || window.PersoPicker.isActive()) {
+        throw new Error("Selection cancelled.");
+      }
+      panel.hidden = true;
+      log.info("picker.requested");
+      try {
+        return await window.PersoPicker.pickElement();
+      } finally {
+        panel.hidden = false;
+        panel.querySelector("#prompt-editor")?.focus?.();
+      }
+    },
+
+    formatElementLabel(element) {
+      if (element.id) return `#${element.id}`;
+      const tag = element.tagName.toLowerCase();
+      const classes = Array.from(element.classList || []).slice(0, 2);
+      return classes.length ? `${tag}.${classes.join(".")}` : tag;
+    },
+
+    async onSend({ prompt, tokens }) {
+      const trimmed = prompt?.trim();
+      if (!trimmed) throw new Error("Type what you want to change first.");
+      if (hasLocalPath(trimmed) && !tokens.some(([, stored]) => stored.type === "image")) {
+        throw new Error("Attach the image file instead of typing its local path.");
+      }
+      return generateAndApplyPlan({ prompt: trimmed, tokens });
+    },
+
+    async onRevert() {
+      await revertAppliedPlan();
+    }
+  };
 }
 
 async function loadPanelState() {
   const state = await chrome.storage.local.get(["profileNotes", getPlanStorageKey()]);
-  const notes = panel.querySelector("#perso-xxl-notes");
   const savedPlan = state[getPlanStorageKey()];
+  const editor = panel?.querySelector("#prompt-editor");
 
-  if (state.profileNotes) notes.value = state.profileNotes;
-  if (savedPlan) renderPlan(savedPlan);
-  renderSelections();
+  if (editor && state.profileNotes && !editor.textContent.trim()) {
+    editor.textContent = state.profileNotes;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   log.info("panel.state.loaded", {
     hasProfileNotes: Boolean(state.profileNotes),
     hasSavedPlan: Boolean(savedPlan),
     key: getPlanStorageKey()
   });
-  notes.focus();
+
+  editor?.focus?.();
 }
 
-async function handlePanelClick(event) {
-  const action = event.target?.dataset?.action;
-  if (!action) return;
+function tokensToSelections(tokens) {
+  const selections = [];
 
-  if (action === "close") {
-    panel.hidden = true;
-    log.info("panel.closed");
-    return;
-  }
-
-  if (action === "pick") {
-    await startElementPick();
-    return;
-  }
-
-  if (action === "generate") {
-    await generateAndApplyPlan();
-    return;
-  }
-
-  if (action === "apply") {
-    await applySavedPlan();
-    return;
-  }
-
-  if (action === "revert") {
-    await revertChanges();
-  }
-}
-
-function handleSelectionClick(event) {
-  const removeId = event.target?.dataset?.removeSelection;
-  if (!removeId) return;
-
-  selectedElements = selectedElements.filter((selection) => selection.id !== removeId);
-  renderSelections();
-  log.info("selection.removed", { selectionId: removeId, remaining: selectedElements.length });
-}
-
-async function startElementPick() {
-  if (!panel || window.PersoPicker.isActive()) return;
-
-  panel.hidden = true;
-  log.info("picker.requested");
-
-  try {
-    const element = await window.PersoPicker.pickElement();
+  for (const [, stored] of tokens) {
+    if (stored.type !== "pick" || !stored.element) continue;
     selectionCounter += 1;
-    const selection = window.PersoDomContext.buildSelection(element, `sel_${selectionCounter}`);
-    selectedElements.push(selection);
-    renderSelections();
-    log.info("selection.added", { selectionId: selection.id, count: selectedElements.length });
-  } catch (error) {
-    if (error.message !== "Selection cancelled.") {
-      log.warn("picker.failed", { error });
-    }
-  } finally {
-    panel.hidden = false;
-    panel.querySelector("#perso-xxl-notes")?.focus();
+    selections.push(
+      window.PersoDomContext.buildSelection(stored.element, `sel_${selectionCounter}`)
+    );
   }
+
+  return selections;
 }
 
-function renderSelections() {
-  if (!panel) return;
+async function resolveUploadedAsset(tokens) {
+  for (const [, stored] of tokens) {
+    if (stored.type !== "image" || !stored.file) continue;
 
-  const container = panel.querySelector('[data-role="selections"]');
-  container.replaceChildren();
-
-  if (selectedElements.length === 0) {
-    container.hidden = true;
-    return;
+    return {
+      assetId: "uploadedImage",
+      name: stored.label || stored.file.name,
+      type: stored.file.type,
+      size: stored.file.size,
+      dataUrl: await readFileAsDataUrl(stored.file)
+    };
   }
 
-  container.hidden = false;
-
-  for (const selection of selectedElements) {
-    const chip = document.createElement("span");
-    chip.className = "perso-xxl-selection-chip";
-    chip.innerHTML = `
-      <span>(pasted element)</span>
-      <button type="button" data-remove-selection="${selection.id}" aria-label="Remove selection">×</button>
-    `;
-    container.appendChild(chip);
-  }
+  return null;
 }
 
-async function generateAndApplyPlan() {
-  await runPanelTask("Generating plan...", async () => {
-    const prompt = panel.querySelector("#perso-xxl-notes").value.trim();
-    if (!prompt) throw new Error("Type what you want to change first.");
-    if (hasLocalPath(prompt) && !uploadedAsset) {
-      throw new Error("Attach the image file instead of typing its local path.");
+function summariesFromUploaded(uploaded) {
+  if (!uploaded) return [];
+  return [{
+    assetId: uploaded.assetId,
+    name: uploaded.name,
+    type: uploaded.type,
+    size: uploaded.size,
+    useAs: "backgroundImage"
+  }];
+}
+
+function attachAssetsToPlan(plan, uploaded) {
+  if (!uploaded) return plan;
+  return {
+    ...plan,
+    assets: {
+      ...(plan.assets || {}),
+      [uploaded.assetId]: {
+        type: uploaded.type,
+        name: uploaded.name,
+        dataUrl: uploaded.dataUrl
+      }
     }
+  };
+}
 
-    const pageContext = buildPageContext();
-    const pageDom = window.PersoDomContext.collectPageDom();
-    log.info("generation.started", {
-      promptLength: prompt.length,
-      pageContext,
-      selectionCount: selectedElements.length,
-      pageNodeCount: pageDom.nodeCount
-    });
+async function generateAndApplyPlan({ prompt, tokens }) {
+  const selections = tokensToSelections(tokens);
+  const uploadedAsset = await resolveUploadedAsset(tokens);
 
-    let plan = await window.PersoAiClient.generateTransformPlan({
+  if (!prompt) throw new Error("Type what you want to change first.");
+  if (hasLocalPath(prompt) && !uploadedAsset) {
+    throw new Error("Attach the image file instead of typing its local path.");
+  }
+
+  const pageContext = buildPageContext();
+  const pageDom = window.PersoDomContext.collectPageDom();
+
+  log.info("generation.started", {
+    promptLength: prompt.length,
+    pageContext,
+    selectionCount: selections.length,
+    pageNodeCount: pageDom.nodeCount
+  });
+
+  const summaries = summariesFromUploaded(uploadedAsset);
+
+  let plan = await window.PersoAiClient.generateTransformPlan({
+    prompt,
+    pageContext,
+    pageDom,
+    selections,
+    availableAssets: summaries
+  });
+  plan = attachAssetsToPlan(plan, uploadedAsset);
+
+  log.info("generation.received", {
+    site: plan.site,
+    ruleCount: plan.rules?.length || 0,
+    targetRefs: Object.keys(plan.targetMap || {})
+  });
+
+  let validation = window.PersoAiClient.validateTransformPlan(plan);
+  if (!validation.ok) {
+    log.warn("generation.validation.failed", { errors: validation.errors });
+    log.info("generation.repair.started");
+
+    plan = await window.PersoAiClient.generateTransformPlan({
       prompt,
       pageContext,
       pageDom,
-      selections: selectedElements,
-      availableAssets: getAvailableAssetSummaries()
+      selections,
+      availableAssets: summaries,
+      previousPlan: plan,
+      validationErrors: validation.errors
     });
-    plan = attachAssetsToPlan(plan);
-    log.info("generation.received", {
-      site: plan.site,
+    plan = attachAssetsToPlan(plan, uploadedAsset);
+
+    validation = window.PersoAiClient.validateTransformPlan(plan);
+    if (!validation.ok) {
+      log.warn("generation.repair.failed", { errors: validation.errors });
+      throw new Error(`Generated plan failed validation: ${validation.errors.join(" ")}`);
+    }
+
+    log.info("generation.repair.passed", {
       ruleCount: plan.rules?.length || 0,
       targetRefs: Object.keys(plan.targetMap || {})
     });
-
-    let validation = window.PersoAiClient.validateTransformPlan(plan);
-    if (!validation.ok) {
-      log.warn("generation.validation.failed", { errors: validation.errors });
-      log.info("generation.repair.started");
-
-      plan = await window.PersoAiClient.generateTransformPlan({
-        prompt,
-        pageContext,
-        pageDom,
-        selections: selectedElements,
-        availableAssets: getAvailableAssetSummaries(),
-        previousPlan: plan,
-        validationErrors: validation.errors
-      });
-      plan = attachAssetsToPlan(plan);
-
-      validation = window.PersoAiClient.validateTransformPlan(plan);
-      if (!validation.ok) {
-        log.warn("generation.repair.failed", { errors: validation.errors });
-        throw new Error(`Generated plan failed validation: ${validation.errors.join(" ")}`);
-      }
-
-      log.info("generation.repair.passed", {
-        ruleCount: plan.rules?.length || 0,
-        targetRefs: Object.keys(plan.targetMap || {})
-      });
-    }
-    log.info("generation.validation.passed");
-
-    currentPlan = plan;
-    zeroMatchRetryCount = 0;
-    await chrome.storage.local.set({
-      profileNotes: prompt,
-      [getPlanStorageKey()]: plan
-    });
-    log.info("storage.saved", { key: getPlanStorageKey(), hasProfileNotes: Boolean(prompt), ruleCount: plan.rules?.length || 0 });
-    applyCurrentPlan();
-    renderPlan(plan);
-    return "Plan generated and applied.";
-  });
-}
-
-async function applySavedPlan() {
-  await runPanelTask("Applying saved plan...", async () => {
-    const state = await chrome.storage.local.get([getPlanStorageKey()]);
-    const savedPlan = state[getPlanStorageKey()];
-    if (!savedPlan) throw new Error("No saved plan for this page yet.");
-
-    log.info("plan.saved.apply.requested", { key: getPlanStorageKey(), ruleCount: savedPlan.rules?.length || 0 });
-    currentPlan = savedPlan;
-    zeroMatchRetryCount = 0;
-    applyCurrentPlan();
-    renderPlan(savedPlan);
-    return "Saved plan applied.";
-  });
-}
-
-async function revertChanges() {
-  await runPanelTask("Reverting changes...", async () => {
-    clearTimeout(applyTimer);
-    currentPlan = null;
-    zeroMatchRetryCount = 0;
-    suppressMutationApplyUntil = Date.now() + 1200;
-    window.PersoExecutor.revertPlan();
-    await chrome.storage.local.remove([getPlanStorageKey()]);
-    renderPlan(null);
-    log.info("plan.reverted", { key: getPlanStorageKey() });
-    return "Changes reverted.";
-  });
-}
-
-async function runPanelTask(message, callback) {
-  setPanelStatus(message);
-  setPanelDisabled(true);
-
-  try {
-    const result = await callback();
-    setPanelStatus(result);
-    log.info("panel.task.finished", { message: result });
-  } catch (error) {
-    setPanelStatus(error.message || String(error));
-    log.error("panel.task.failed", { error });
-  } finally {
-    setPanelDisabled(false);
-  }
-}
-
-function setPanelStatus(message) {
-  panel.querySelector('[data-role="status"]').textContent = message;
-}
-
-function setPanelDisabled(disabled) {
-  panel.querySelectorAll("button, textarea").forEach((element) => {
-    if (element.dataset.action !== "close") element.disabled = disabled;
-  });
-}
-
-function renderPlan(plan) {
-  if (!panel) return;
-  panel.querySelector('[data-role="plan"]').textContent = plan ? JSON.stringify(plan, null, 2) : "";
-}
-
-async function handleAssetChange(event) {
-  const file = event.target.files?.[0];
-  if (!file) {
-    uploadedAsset = null;
-    setAssetStatus("No image attached");
-    return;
   }
 
-  if (!file.type.startsWith("image/")) {
-    uploadedAsset = null;
-    setAssetStatus("Only image files are supported");
-    return;
-  }
+  log.info("generation.validation.passed");
 
-  uploadedAsset = {
-    assetId: "uploadedImage",
-    name: file.name,
-    type: file.type,
-    size: file.size,
-    dataUrl: await readFileAsDataUrl(file)
-  };
-  setAssetStatus(file.name);
-  log.info("asset.attached", {
-    assetId: uploadedAsset.assetId,
-    name: uploadedAsset.name,
-    type: uploadedAsset.type,
-    size: uploadedAsset.size
+  currentPlan = plan;
+  zeroMatchRetryCount = 0;
+  await chrome.storage.local.set({
+    profileNotes: prompt,
+    [getPlanStorageKey()]: plan
   });
+  log.info("storage.saved", { key: getPlanStorageKey(), hasProfileNotes: Boolean(prompt), ruleCount: plan.rules?.length || 0 });
+  applyCurrentPlan();
+  log.info("panel.task.finished", { message: "Plan generated." });
+}
+
+async function revertAppliedPlan() {
+  clearTimeout(applyTimer);
+  currentPlan = null;
+  zeroMatchRetryCount = 0;
+  suppressMutationApplyUntil = Date.now() + 1200;
+  window.PersoExecutor.revertPlan();
+  await chrome.storage.local.remove([getPlanStorageKey()]);
+  log.info("plan.reverted", { key: getPlanStorageKey() });
 }
 
 function buildPageContext() {
@@ -430,39 +437,8 @@ function buildPageContext() {
   };
 }
 
-function getAvailableAssetSummaries() {
-  if (!uploadedAsset) return [];
-  return [{
-    assetId: uploadedAsset.assetId,
-    name: uploadedAsset.name,
-    type: uploadedAsset.type,
-    size: uploadedAsset.size,
-    useAs: "backgroundImage"
-  }];
-}
-
-function attachAssetsToPlan(plan) {
-  if (!uploadedAsset) return plan;
-
-  return {
-    ...plan,
-    assets: {
-      ...(plan.assets || {}),
-      [uploadedAsset.assetId]: {
-        type: uploadedAsset.type,
-        name: uploadedAsset.name,
-        dataUrl: uploadedAsset.dataUrl
-      }
-    }
-  };
-}
-
 function getPlanStorageKey() {
   return `sitePlan:${location.hostname}:${location.pathname}`;
-}
-
-function setAssetStatus(message) {
-  panel?.querySelector('[data-role="asset-status"]')?.replaceChildren(document.createTextNode(message));
 }
 
 function readFileAsDataUrl(file) {
@@ -477,3 +453,9 @@ function readFileAsDataUrl(file) {
 function hasLocalPath(value) {
   return /(^|\s)(\/home\/|\/Users\/|[A-Za-z]:\\)/.test(value);
 }
+
+initExtensionHost();
+panel = createPanel();
+document.documentElement.appendChild(panel);
+log.info("panel.created");
+loadPanelState();

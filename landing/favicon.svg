@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <style>
+      @font-face {
+        font-family: 'Chewy';
+        font-style: normal;
+        font-weight: 400;
+        src: url(https://fonts.gstatic.com/s/chewy/v18/uK_94ruUb-k-wk5x.ttf) format('truetype');
+      }
+      .p {
+        font-family: 'Chewy', cursive;
+        font-size: 340px;
+        fill: #ff2d7a;
+      }
+    </style>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#fff9fc"/>
+  <text x="256" y="350" class="p" text-anchor="middle" dominant-baseline="middle">P</text>
+</svg>

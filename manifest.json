@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Perso XXL",
   "description": "AI-personalized layouts for any website.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["http://*/*", "https://*/*", "https://openrouter.ai/*", "http://localhost:8787/*"],
   "background": {
@@ -31,9 +31,11 @@
         "content/dom-context.js",
         "content/executor.js",
         "content/ai-client.js",
-        "content/content.js"
+        "content/vendor/gsap.min.js",
+        "content/content.js",
+        "ai-input/main.js"
       ],
-      "css": ["content/base.css"],
+      "css": ["content/base.css", "content/ai-input.css"],
       "run_at": "document_idle"
     }
   ]

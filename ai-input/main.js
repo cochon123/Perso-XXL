@@ -1,24 +1,31 @@
-const aiInput = document.getElementById('ai-input');
-const attachToggle = document.getElementById('attach-toggle');
-const attachMenu = document.getElementById('attach-menu');
-const imageInput = document.getElementById('image-input');
-const promptEditor = document.getElementById('prompt-editor');
-const promptPlaceholder = document.getElementById('prompt-placeholder');
-const sendBtn = document.getElementById('send-btn');
-const sentList = document.getElementById('sent-list');
-const inputStatus = document.getElementById('input-status');
-const statusLabel = document.getElementById('status-label');
-const statusLine = document.getElementById('status-line');
-const statusDots = document.getElementById('status-dots');
+const extensionPanel = document.getElementById('perso-xxl-panel');
+const qs = (selector) => (extensionPanel ? extensionPanel.querySelector(selector) : document.querySelector(selector));
+const aiInput = qs('#ai-input');
+const attachToggle = qs('#attach-toggle');
+const attachMenu = qs('#attach-menu');
+const imageInput = qs('#image-input');
+const promptEditor = qs('#prompt-editor');
+const promptPlaceholder = qs('#prompt-placeholder');
+const sendBtn = qs('#send-btn');
+const sentList = qs('#sent-list');
+const inputStatus = qs('#input-status');
+const statusLabel = qs('#status-label');
+const statusLine = qs('#status-line');
+const statusDots = qs('#status-dots');
 const controlSections = document.getElementById('control-sections');
 const exportOutput = document.getElementById('export-output');
 const copyBtn = document.getElementById('copy-btn');
 const resetBtn = document.getElementById('reset-btn');
 const controlSearch = document.getElementById('control-search');
-const toast = document.getElementById('toast');
+const toast = qs('#toast');
 
 const isPlayground = Boolean(controlSections);
-const isDemo = () => Boolean(window.PersoDemo?.enabled);
+const hostApi = () => {
+  if (window.PersoDemo?.enabled) return window.PersoDemo;
+  if (window.PersoExtension?.enabled) return window.PersoExtension;
+  return null;
+};
+const isEmbedded = () => Boolean(hostApi());
 
 if (!aiInput) {
   // Page has no ai-input markup — skip initialization.
@@ -375,7 +382,7 @@ function showToast(message) {
 function openMenu() {
   attachMenu.hidden = false;
   attachToggle.setAttribute('aria-expanded', 'true');
-  if (!prefersReducedMotion) {
+  if (!prefersReducedMotion && typeof gsap !== 'undefined') {
     gsap.fromTo(attachMenu, { opacity: 0, y: 8, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: 'back.out(1.4)' });
     gsap.from('.ai-input__menu-item', { opacity: 0, x: -8, duration: 0.22, stagger: 0.05, ease: 'power2.out', delay: 0.04 });
   }
@@ -730,7 +737,7 @@ function simulatePick() {
 }
 
 async function handlePickAction() {
-  if (!isDemo()) {
+  if (!isEmbedded()) {
     simulatePick();
     return;
   }
@@ -739,8 +746,9 @@ async function handlePickAction() {
   closeMenu();
 
   try {
-    const element = await window.PersoDemo.pickElement();
-    const label = window.PersoDemo.formatElementLabel(element);
+    const api = hostApi();
+    const element = await api.pickElement();
+    const label = api.formatElementLabel(element);
     insertToken({ type: 'pick', label, element });
     showToast(`Element selected — ${label}`);
   } catch {
@@ -907,8 +915,8 @@ function enterDoneState() {
 }
 
 function revertChanges() {
-  if (isDemo()) {
-    window.PersoDemo.onRevert?.().catch(() => {});
+  if (isEmbedded()) {
+    hostApi().onRevert?.().catch(() => {});
   }
   isDone = false;
   sentList.innerHTML = '';
@@ -1063,9 +1071,9 @@ sendBtn.addEventListener('click', () => {
     gsap.fromTo(sendBtn, { scale: 1 }, { scale: 0.88, duration: 0.1, yoyo: true, repeat: 1, ease: 'power2.inOut' });
   }
 
-  if (isDemo()) {
+  if (isEmbedded()) {
     enterLoadingState(snapshot, { autoFinish: false });
-    window.PersoDemo.onSend({ prompt, tokens })
+    hostApi().onSend({ prompt, tokens })
       .then(() => finishLoadingSequence())
       .catch((error) => abortLoadingState(error.message || String(error)));
     return;

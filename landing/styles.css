@@ -59,12 +59,20 @@ a { color: inherit; text-decoration: none; }
 }
 
 .nav-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
   font-size: 1.5rem;
   letter-spacing: 0.02em;
   color: var(--text);
 }
 
-.nav-logo span { color: var(--pink); }
+.nav-logo-mark {
+  flex-shrink: 0;
+  border-radius: 10px;
+}
+
+.nav-logo-text span { color: var(--pink); }
 
 .nav-cta {
   font-size: 0.95rem;
