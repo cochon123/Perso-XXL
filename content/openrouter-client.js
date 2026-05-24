@@ -6,7 +6,7 @@ window.PersoOpenRouter = (() => {
       return undefined;
     }
 
-    const effort = window.PersoEnv?.OPENROUTER_REASONING_EFFORT || "medium";
+    const effort = window.PersoEnv?.OPENROUTER_REASONING_EFFORT || "low";
     const exclude = window.PersoEnv?.OPENROUTER_REASONING_EXCLUDE !== false;
 
     return {

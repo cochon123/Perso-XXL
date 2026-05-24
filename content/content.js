@@ -101,13 +101,42 @@ function isPersoNode(node) {
 
 function togglePanel() {
   if (!panel) return;
-  panel.hidden = !panel.hidden;
-  log.info("panel.visibility.changed", { hidden: panel.hidden });
-  if (!panel.hidden) loadPanelState();
+  if (panel.hidden) openPanel();
+  else closePanel();
+}
+
+function openPanel() {
+  if (!panel) return;
+  panel.hidden = false;
+  log.info("panel.visibility.changed", { hidden: false });
+  loadPanelState();
+}
+
+function closePanel() {
+  if (!panel || panel.hidden) return;
+  panel.hidden = true;
+  log.info("panel.visibility.changed", { hidden: true });
+}
+
+function attachPanelInteractions() {
+  const backdrop = panel.querySelector(".perso-xxl-panel-backdrop");
+  backdrop?.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    closePanel();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !panel || panel.hidden) return;
+    const menu = panel.querySelector("#attach-menu");
+    if (menu && !menu.hidden) return;
+    if (window.PersoPicker?.isActive?.()) return;
+    closePanel();
+  });
 }
 
 function createAiInputMarkup() {
   return `
+    <div class="perso-xxl-panel-backdrop" aria-hidden="true"></div>
     <div class="preview-stack" id="preview-stack">
       <div class="ai-sent-list" id="sent-list" aria-live="polite"></div>
 
@@ -457,5 +486,6 @@ function hasLocalPath(value) {
 initExtensionHost();
 panel = createPanel();
 document.documentElement.appendChild(panel);
+attachPanelInteractions();
 log.info("panel.created");
 loadPanelState();

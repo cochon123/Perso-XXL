@@ -46,7 +46,7 @@ node scripts/build-env.mjs
 
 Set `DEV_LOGS=false` in `.env` and rebuild if you want to disable terminal logging.
 
-Reasoning is enabled by default via OpenRouter's unified `reasoning` parameter (`enabled: true`, `effort: medium`). To disable or tune it in `.env`:
+Reasoning is enabled by default via OpenRouter's unified `reasoning` parameter (`enabled: true`, `effort: low`). To disable or tune it in `.env`:
 
 ```env
 OPENROUTER_REASONING_ENABLED=false
