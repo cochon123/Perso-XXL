@@ -33,6 +33,8 @@ let tokenCounter = 0;
 
 let exportFormat = 'css';
 let toastTimer;
+/** @type {Range | null} */
+let savedEditorRange = null;
 
 const LOADING_MESSAGES = [
   'analysing your intent',
@@ -511,6 +513,31 @@ function updateLayoutMode() {
   animateLayoutChange(shouldMultiline);
 }
 
+function saveEditorCaret() {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount) return;
+
+  const range = sel.getRangeAt(0);
+  if (!promptEditor.contains(range.commonAncestorContainer)) return;
+
+  savedEditorRange = range.cloneRange();
+}
+
+function restoreEditorCaret() {
+  if (!savedEditorRange) return false;
+
+  try {
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(savedEditorRange);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    savedEditorRange = null;
+  }
+}
+
 function placeCaretAfter(node) {
   const space = document.createTextNode('\u200B');
   node.parentNode?.insertBefore(space, node.nextSibling);
@@ -526,14 +553,25 @@ function placeCaretAfter(node) {
 
 function insertAtCaret(node) {
   promptEditor.focus();
+
   const sel = window.getSelection();
-  if (!sel?.rangeCount) {
+  const hasValidCaret = sel?.rangeCount
+    && promptEditor.contains(sel.getRangeAt(0).commonAncestorContainer);
+
+  if (!hasValidCaret) {
+    restoreEditorCaret();
+  } else if (savedEditorRange) {
+    restoreEditorCaret();
+  }
+
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) {
     promptEditor.appendChild(node);
     placeCaretAfter(node);
     return;
   }
 
-  const range = sel.getRangeAt(0);
+  const range = selection.getRangeAt(0);
   if (!promptEditor.contains(range.commonAncestorContainer)) {
     promptEditor.appendChild(node);
     placeCaretAfter(node);
@@ -697,6 +735,7 @@ async function handlePickAction() {
     return;
   }
 
+  saveEditorCaret();
   closeMenu();
 
   try {
@@ -705,7 +744,7 @@ async function handlePickAction() {
     insertToken({ type: 'pick', label, element });
     showToast(`Element selected — ${label}`);
   } catch {
-    // Selection cancelled.
+    savedEditorRange = null;
   }
 }
 
@@ -910,9 +949,18 @@ function filterControls(query) {
 }
 
 /* ── Event listeners ── */
+attachToggle.addEventListener('mousedown', (e) => {
+  saveEditorCaret();
+  e.preventDefault();
+});
+
 attachToggle.addEventListener('click', (e) => {
   e.stopPropagation();
   toggleMenu();
+});
+
+attachMenu.addEventListener('mousedown', (e) => {
+  if (e.target.closest('[data-action="pick"]')) saveEditorCaret();
 });
 
 attachMenu.addEventListener('click', (e) => {
