@@ -45,6 +45,20 @@
   width: 100%;
 }
 
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(calc(var(--ai-width) * 1px), 100%);
+  max-width: 100%;
+}
+
+  width: 100%;
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
 #perso-xxl-panel .ai-sent-list {
   display: flex;
   flex-direction: column;
@@ -71,6 +85,10 @@
   vertical-align: middle;
 }
 
+  display: none;
+}
+
+#perso-xxl-panel /* ── AI Input Component ── */
 #perso-xxl-panel .ai-input {
   position: relative;
   display: flex;

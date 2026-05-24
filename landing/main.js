@@ -259,24 +259,25 @@ gsap.to('.slider-knob', {
 });
 
 /* ── Card stack parallax ── */
-['.card-1', '.card-2', '.card-3'].forEach((sel, i) => {
-  gsap.to(sel, {
-    y: (i + 1) * -30,
-    rotation: (i - 1) * 4,
-    scrollTrigger: {
-      trigger: '.card-stack',
-      start: 'top bottom',
-      end: 'bottom top',
-      scrub: 1,
-    },
-  });
+gsap.to('.card-nature', {
+  y: -20,
+  scrollTrigger: { trigger: '.card-stack', start: 'top bottom', end: 'bottom top', scrub: 1 },
+});
+gsap.to('.card-space', {
+  y: -40,
+  xPercent: -50,
+  scrollTrigger: { trigger: '.card-stack', start: 'top bottom', end: 'bottom top', scrub: 1 },
+});
+gsap.to('.card-tech', {
+  y: -20,
+  scrollTrigger: { trigger: '.card-stack', start: 'top bottom', end: 'bottom top', scrub: 1 },
 });
 
 /* Continuous card float */
 if (!prefersReducedMotion) {
-  gsap.to('.card-1', { y: '+=12', duration: 3, repeat: -1, yoyo: true, ease: 'sine.inOut' });
-  gsap.to('.card-2', { y: '+=8', duration: 2.5, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 0.5 });
-  gsap.to('.card-3', { y: '+=10', duration: 3.5, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 1 });
+  gsap.to('.card-nature', { y: '+=10', rotation: -12, duration: 3.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+  gsap.to('.card-space', { y: '+=8', xPercent: -50, duration: 2.8, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 0.4 });
+  gsap.to('.card-tech', { y: '+=10', rotation: 12, duration: 3.4, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 0.8 });
 }
 
 /* ── Productivity parallax bg ── */

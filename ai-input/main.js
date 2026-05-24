@@ -35,13 +35,12 @@ const LOADING_MESSAGES = [
 ];
 const LOADING_DURATION_MS = 10000;
 const LOADING_MESSAGE_INTERVAL_MS = 2000;
-const LOADING_DONE_HOLD_MS = 1200;
 
 let loadingInterval = null;
 let loadingFinishTimeout = null;
-let loadingDoneTimeout = null;
 let loadingMessageIndex = 0;
 let isLoading = false;
+let isDone = false;
 
 const CONTROL_GROUPS = [
   {
@@ -93,6 +92,15 @@ const CONTROL_GROUPS = [
     controls: [
       { key: '--ai-btn-size', label: 'Button size', type: 'range', min: 32, max: 52, step: 2, unit: 'px' },
       { key: '--ai-icon-size', label: 'Icon size', type: 'range', min: 14, max: 24, step: 1, unit: 'px' },
+    ],
+  },
+  {
+    title: 'Revert icon',
+    controls: [
+      { key: '--ai-revert-size', label: 'Size', type: 'range', min: 10, max: 28, step: 1, unit: 'px' },
+      { key: '--ai-revert-stroke', label: 'Thickness', type: 'range', min: 0, max: 2.5, step: 0.1, unit: '' },
+      { key: '--ai-revert-x', label: 'Offset X', type: 'range', min: -6, max: 6, step: 0.5, unit: 'px' },
+      { key: '--ai-revert-y', label: 'Offset Y', type: 'range', min: -6, max: 6, step: 0.5, unit: 'px' },
     ],
   },
   {
@@ -155,6 +163,7 @@ function formatDisplayValue(control, raw) {
     if (control.unit === 'px') return `${n}px`;
     if (control.key === '--ai-font-weight') return String(n);
     if (control.key === '--ai-shadow-opacity' || control.key === '--ai-glow-opacity') return n.toFixed(2);
+    if (control.key === '--ai-revert-stroke') return n.toFixed(2);
     return String(raw);
   }
   return raw;
@@ -181,7 +190,8 @@ function buildControls() {
       row.dataset.search = `${control.label} ${control.key}`.toLowerCase();
 
       if (control.type === 'range') {
-        const current = parseFloat(getCssValue(control.key)) || control.min;
+        const parsed = parseFloat(getCssValue(control.key));
+        const current = Number.isFinite(parsed) ? parsed : control.min;
         const label = document.createElement('label');
         label.textContent = control.label;
         label.setAttribute('for', control.key);
@@ -655,6 +665,10 @@ function serializeEditor() {
 }
 
 function updateSendState() {
+  if (isDone) {
+    sendBtn.disabled = false;
+    return;
+  }
   sendBtn.disabled = !editorHasContent();
 }
 
@@ -764,9 +778,13 @@ function finishLoadingSequence() {
   loadingInterval = null;
   loadingFinishTimeout = null;
 
+  const showDone = () => {
+    setStatusMessage('Done!', { animate: !prefersReducedMotion, showDots: false });
+    enterDoneState();
+  };
+
   if (prefersReducedMotion) {
-    setStatusMessage('Done!', { animate: false, showDots: false });
-    loadingDoneTimeout = setTimeout(resetAfterLoading, LOADING_DONE_HOLD_MS);
+    showDone();
     return;
   }
 
@@ -775,27 +793,35 @@ function finishLoadingSequence() {
     opacity: 0,
     duration: 0.24,
     ease: 'power2.in',
-    onComplete: () => {
-      setStatusMessage('Done!', { animate: true, showDots: false });
-      loadingDoneTimeout = setTimeout(resetAfterLoading, LOADING_DONE_HOLD_MS);
-    },
+    onComplete: showDone,
   });
 }
 
-function resetAfterLoading() {
+function enterDoneState() {
   isLoading = false;
-  delete aiInput.dataset.statusDone;
+  isDone = true;
+  aiInput.dataset.state = 'done';
+  promptEditor.contentEditable = 'false';
+  attachToggle.disabled = true;
+  sendBtn.disabled = false;
+  sendBtn.setAttribute('aria-label', 'Revert changes');
+}
+
+function revertChanges() {
+  isDone = false;
+  sentList.innerHTML = '';
   aiInput.dataset.state = 'idle';
+  delete aiInput.dataset.statusDone;
   inputStatus.hidden = true;
   promptEditor.contentEditable = 'true';
   attachToggle.disabled = false;
   attachToggle.setAttribute('aria-label', 'Add attachment');
+  sendBtn.setAttribute('aria-label', 'Send prompt');
   gsap.set(statusLine, { y: 0, opacity: 1 });
+  clearEditor();
   syncEditorEmptyState();
   updateLayoutMode();
   updateSendState();
-  clearTimeout(loadingDoneTimeout);
-  loadingDoneTimeout = null;
 }
 
 function resetControls() {
@@ -859,6 +885,10 @@ promptEditor.addEventListener('blur', () => { aiInput.dataset.state = 'idle'; })
 promptEditor.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
+    if (isDone) {
+      revertChanges();
+      return;
+    }
     if (!sendBtn.disabled && !isLoading) sendBtn.click();
     return;
   }
@@ -908,6 +938,10 @@ promptEditor.addEventListener('paste', (e) => {
 });
 
 sendBtn.addEventListener('click', () => {
+  if (isDone) {
+    revertChanges();
+    return;
+  }
   if (sendBtn.disabled || isLoading) return;
   const snapshot = captureEditorSnapshot();
 

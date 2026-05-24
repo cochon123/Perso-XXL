@@ -31,10 +31,9 @@
         "content/dom-context.js",
         "content/executor.js",
         "content/ai-client.js",
-        "content/ai-input.js",
         "content/content.js"
       ],
-      "css": ["content/base.css", "content/ai-input.css"],
+      "css": ["content/base.css"],
       "run_at": "document_idle"
     }
   ]

@@ -7,24 +7,23 @@ html[data-perso-xxl-enabled="true"] {
 }
 
 #perso-xxl-panel {
-  background: rgba(13, 6, 16, 0.94);
-  border: 1px solid rgba(255, 45, 122, 0.18);
-  border-radius: 20px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  background: #121214;
+  border: 1px solid #34343a;
+  border-radius: 8px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
   box-sizing: border-box;
-  color: #faf8f9;
+  color: #f4f4f5;
   display: grid;
-  font-family: "DM Sans", Inter, Arial, system-ui, sans-serif;
+  font-family: Inter, Arial, system-ui, sans-serif;
   gap: 12px;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - 72px);
   overflow: auto;
-  padding: 14px 16px 16px;
+  padding: 16px;
   position: fixed;
   left: 50%;
-  bottom: 24px;
-  top: auto;
+  top: 20%;
   transform: translateX(-50%);
-  width: min(560px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
   z-index: 2147483647;
 }
 
@@ -39,81 +38,76 @@ html[data-perso-xxl-enabled="true"] {
 }
 
 #perso-xxl-panel strong {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 16px;
   line-height: 1.2;
 }
 
+#perso-xxl-panel label,
 #perso-xxl-panel summary,
-#perso-xxl-panel p[data-role="status"] {
-  color: rgba(250, 248, 249, 0.55);
-  font-size: 12px;
+#perso-xxl-panel p {
+  color: #d4d4d8;
+  font-size: 13px;
   margin: 0;
 }
 
-#perso-xxl-panel header button {
-  align-items: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 0;
-  border-radius: 10px;
-  color: #faf8f9;
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: 20px;
-  height: 32px;
-  justify-content: center;
-  min-height: 32px;
-  padding: 0;
-  width: 32px;
-}
-
-.perso-xxl-actions {
+.perso-xxl-prompt-row {
   display: grid;
   gap: 8px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 44px;
 }
 
-.perso-xxl-actions button {
-  background: #ff2d7a;
-  border: 0;
-  border-radius: 10px;
-  color: #fff;
-  cursor: pointer;
+#perso-xxl-panel textarea {
+  background: #1d1d21;
+  border: 1px solid #34343a;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: #f4f4f5;
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  min-height: 36px;
-  padding: 8px 12px;
+  line-height: 1.4;
+  min-height: 104px;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
 }
 
-.perso-xxl-actions button.secondary {
-  background: rgba(255, 255, 255, 0.08);
-  color: #faf8f9;
+.perso-xxl-pick-button {
+  align-self: start;
+  font-size: 18px;
+  min-height: 44px;
+  padding: 0;
 }
 
-.perso-xxl-actions button.danger {
-  background: rgba(255, 80, 80, 0.18);
-  color: #ffd1d1;
+.perso-xxl-selections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.perso-xxl-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+.perso-xxl-selection-chip {
+  align-items: center;
+  background: #25252b;
+  border: 1px solid #3f3f46;
+  border-radius: 999px;
+  color: #e4e4e7;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
 }
 
-#perso-xxl-panel details {
-  border-top: 1px solid rgba(255, 45, 122, 0.12);
-  padding-top: 10px;
-}
-
-#perso-xxl-panel pre {
-  color: rgba(250, 248, 249, 0.72);
-  font-size: 11px;
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
+.perso-xxl-selection-chip button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #d4d4d8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 16px;
+  height: 20px;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0;
+  width: 20px;
 }
 
 #perso-xxl-picker-overlay {
@@ -146,4 +140,97 @@ html[data-perso-xxl-enabled="true"] {
   position: fixed;
   transform: translateX(-50%);
   z-index: 2147483647;
+}
+
+.perso-xxl-asset-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-height: 36px;
+}
+
+.perso-xxl-file-button {
+  align-items: center;
+  background: #2b2b31;
+  border-radius: 8px;
+  color: #f4f4f5;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.perso-xxl-file-button input {
+  display: none;
+}
+
+#perso-xxl-panel [data-role="asset-status"] {
+  color: #b8b8c2;
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#perso-xxl-panel button {
+  background: #e6a348;
+  border: 0;
+  border-radius: 8px;
+  color: #18110a;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+#perso-xxl-panel button.secondary {
+  background: #2b2b31;
+  color: #f4f4f5;
+}
+
+#perso-xxl-panel header button {
+  align-items: center;
+  background: #2b2b31;
+  color: #f4f4f5;
+  display: inline-flex;
+  font-size: 20px;
+  height: 32px;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
+#perso-xxl-panel button:disabled,
+#perso-xxl-panel textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.perso-xxl-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 112px 88px;
+}
+
+#perso-xxl-panel button.danger {
+  background: #4a2424;
+  color: #ffd1d1;
+}
+
+#perso-xxl-panel details {
+  border-top: 1px solid #2b2b31;
+  padding-top: 10px;
+}
+
+#perso-xxl-panel pre {
+  color: #d4d4d8;
+  font-size: 11px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
 }
