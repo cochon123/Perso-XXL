@@ -1,6 +1,5 @@
 window.PersoAiClient = (() => {
   const log = window.PersoLogger;
-  const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
   const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
   const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css"]);
   const ALLOWED_STYLE_KEYS = new Set([
@@ -155,54 +154,55 @@ window.PersoAiClient = (() => {
       throw new Error("Missing OpenRouter key in config/env.js.");
     }
 
+    const reasoningConfig = window.PersoOpenRouter.buildReasoningConfig();
+
     log.info("openrouter.request.started", {
       taskName,
       model,
-      messageCount: messages.length
+      messageCount: messages.length,
+      reasoning: reasoningConfig
     });
 
     const startedAt = performance.now();
-    const response = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "chrome-extension://perso-xxl",
-        "X-Title": "Perso XXL"
-      },
-      body: JSON.stringify({
-        model,
-        temperature,
-        response_format: { type: "json_object" },
-        messages
-      })
+    const result = await window.PersoOpenRouter.chatCompletion({
+      apiKey,
+      model,
+      messages,
+      temperature,
+      responseFormat: { type: "json_object" }
     });
-
-    const payload = await response.json().catch(() => null);
     const durationMs = Math.round(performance.now() - startedAt);
 
     log.info("openrouter.response.received", {
-      ok: response.ok,
-      status: response.status,
+      ok: result.ok,
+      status: result.status,
       durationMs,
-      hasChoices: Boolean(payload?.choices?.length),
-      error: payload?.error?.message || payload?.message || null
+      hasChoices: Boolean(result.payload?.choices?.length),
+      hasReasoning: Boolean(result.reasoning),
+      error: result.error
     });
 
-    if (!response.ok) {
-      const message = payload?.error?.message || payload?.message || `OpenRouter request failed with ${response.status}`;
-      throw new Error(message);
+    if (!result.ok) {
+      throw new Error(result.error || `OpenRouter request failed with ${result.status}`);
     }
 
-    const content = payload?.choices?.[0]?.message?.content;
-    if (!content) throw new Error("OpenRouter returned no plan content.");
+    if (!result.content) {
+      throw new Error("OpenRouter returned no plan content.");
+    }
+
+    if (result.reasoning) {
+      log.debug("openrouter.reasoning.received", {
+        length: result.reasoning.length,
+        preview: result.reasoning.slice(0, 500)
+      });
+    }
 
     log.debug("openrouter.content.received", {
-      contentLength: content.length,
-      preview: content.slice(0, 500)
+      contentLength: result.content.length,
+      preview: result.content.slice(0, 500)
     });
 
-    return JSON.parse(content);
+    return JSON.parse(result.content);
   }
 
   function validateTransformPlan(input) {

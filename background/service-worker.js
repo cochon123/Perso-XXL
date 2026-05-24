@@ -1,6 +1,7 @@
 const CONTENT_FILES = [
   "config/env.js",
   "content/logger.js",
+  "content/openrouter-client.js",
   "content/picker.js",
   "content/dom-context.js",
   "content/executor.js",

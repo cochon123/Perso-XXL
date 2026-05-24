@@ -46,6 +46,16 @@ node scripts/build-env.mjs
 
 Set `DEV_LOGS=false` in `.env` and rebuild if you want to disable terminal logging.
 
+Reasoning is enabled by default via OpenRouter's unified `reasoning` parameter (`enabled: true`, `effort: medium`). To disable or tune it in `.env`:
+
+```env
+OPENROUTER_REASONING_ENABLED=false
+OPENROUTER_REASONING_EFFORT=high
+OPENROUTER_REASONING_EXCLUDE=false
+```
+
+Then run `node scripts/build-env.mjs`.
+
 This is acceptable for a local prototype only. A production extension should call your own backend, and the backend should call OpenRouter.
 
 ## Pipeline

@@ -20,6 +20,9 @@ await writeFile(
     {
       OPENROUTER_API_KEY: env.OPENROUTER_API_KEY || "",
       OPENROUTER_MODEL: env.OPENROUTER_MODEL || "deepseek/deepseek-v4-flash",
+      OPENROUTER_REASONING_ENABLED: env.OPENROUTER_REASONING_ENABLED !== "false",
+      OPENROUTER_REASONING_EFFORT: env.OPENROUTER_REASONING_EFFORT || "medium",
+      OPENROUTER_REASONING_EXCLUDE: env.OPENROUTER_REASONING_EXCLUDE !== "false",
       DEV_LOGS: env.DEV_LOGS !== "false"
     },
     null,
