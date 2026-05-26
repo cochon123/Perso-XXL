@@ -3,6 +3,7 @@ window.PersoExecutor = (() => {
   const STYLE_ID = "perso-xxl-theme";
   const RULE_STYLE_ID = "perso-xxl-css-rules";
   const TARGET_STYLE_ID = "perso-xxl-target-rules";
+  const CAPABILITY_STYLE_ID = "perso-xxl-capability-rules";
   const APPLIED_ATTR = "data-perso-xxl-rule";
   const originalState = new WeakMap();
 
@@ -33,6 +34,8 @@ window.PersoExecutor = (() => {
           totalMatched += applyVisibilityRule(rule, plan);
         } else if (rule.type === "attribute") {
           totalMatched += applyAttributeRule(rule, plan);
+        } else if (rule.type === "capability") {
+          totalMatched += applyCapabilityRule(rule, plan);
         }
       } catch (error) {
         log.warn("executor.rule.failed", { ruleId: rule?.id, ruleType: rule?.type, error });
@@ -52,7 +55,9 @@ window.PersoExecutor = (() => {
     document.getElementById(STYLE_ID)?.remove();
     document.getElementById(RULE_STYLE_ID)?.remove();
     document.getElementById(TARGET_STYLE_ID)?.remove();
+    document.getElementById(CAPABILITY_STYLE_ID)?.remove();
     document.documentElement.removeAttribute("data-perso-xxl-enabled");
+    document.documentElement.removeAttribute("data-perso-xxl-scroll-locked");
 
     const elements = Array.from(document.querySelectorAll(`[${APPLIED_ATTR}]`));
     for (const element of elements) {
@@ -149,6 +154,55 @@ window.PersoExecutor = (() => {
       }
     }
     return elements.length;
+  }
+
+  function applyCapabilityRule(rule, plan) {
+    if (rule.capability !== "scrollLock") {
+      log.warn("executor.capability.unsupported", { ruleId: rule.id, capability: rule.capability });
+      return 0;
+    }
+
+    return applyScrollLockCapability(rule, plan);
+  }
+
+  function applyScrollLockCapability(rule, plan) {
+    const elements = resolveRuleElements(rule, plan);
+    const preserveSelectors = sanitizeSelectors(rule.options?.preserveSelectors || []);
+    const preserveElements = uniqueElements(preserveSelectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
+    const firstElement = preserveElements[0] || elements[0] || document.querySelector("main article, article, main > *");
+
+    document.documentElement.setAttribute("data-perso-xxl-scroll-locked", "true");
+
+    if (firstElement) {
+      rememberElement(firstElement);
+      mark(firstElement, rule.id);
+      firstElement.setAttribute("data-perso-xxl-scroll-preserved", "true");
+    }
+
+    const css = `
+      html[data-perso-xxl-scroll-locked],
+      html[data-perso-xxl-scroll-locked] body {
+        overflow: hidden !important;
+        max-height: 100vh !important;
+      }
+
+      html[data-perso-xxl-scroll-locked] main,
+      html[data-perso-xxl-scroll-locked] [role="main"] {
+        max-height: 100vh !important;
+        overflow: hidden !important;
+      }
+    `;
+
+    upsertStyle(CAPABILITY_STYLE_ID, css);
+
+    log.info("executor.capability.scroll_lock", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      targetCount: elements.length,
+      hasPreservedElement: Boolean(firstElement)
+    });
+
+    return Math.max(1, elements.length || preserveElements.length);
   }
 
   function clearAppliedState() {

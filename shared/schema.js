@@ -36,7 +36,9 @@ export const TRANSFORM_SCHEMA_HINT = {
   ]
 };
 
-export const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css"]);
+export const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css", "capability"]);
+
+export const ALLOWED_CAPABILITIES = new Set(["scrollLock"]);
 
 export const ALLOWED_STYLE_KEYS = new Set([
   "background",

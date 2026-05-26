@@ -1,7 +1,8 @@
 window.PersoAiClient = (() => {
   const log = window.PersoLogger;
   const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
-  const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css"]);
+  const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css", "capability"]);
+  const ALLOWED_CAPABILITIES = new Set(["scrollLock"]);
   const ALLOWED_STYLE_KEYS = new Set([
     "background",
     "backgroundColor",
@@ -117,6 +118,9 @@ window.PersoAiClient = (() => {
             "Prefer type style with a styles object for color, size, spacing, borders, backgrounds, and other standard CSS properties.",
             "Use type css only when a raw CSS declaration block is truly necessary. css rules must include a css string field.",
             "Do not use type css for simple property changes such as color red or font-size 16px.",
+            "Use type capability only for trusted extension-owned behaviors. The only allowed capability is scrollLock.",
+            "For requests such as stop scrolling, prevent scrolling, or show only the first loaded item, use a capability rule with capability scrollLock instead of raw JavaScript.",
+            "A scrollLock capability rule should target the page, feed, or main content area and may include options.preserveSelectors for the first item that should remain visible.",
             "Use only allowed style properties.",
             "If an attached image should be used, set backgroundImage to asset:<assetId>, for example asset:uploadedImage.",
             "Never use local filesystem paths in CSS."
@@ -133,7 +137,8 @@ window.PersoAiClient = (() => {
             pageDom,
             selections,
             availableAssets,
-            allowedRuleTypes: ["css", "style", "visibility", "attribute"],
+            allowedRuleTypes: ["css", "style", "visibility", "attribute", "capability"],
+            allowedCapabilities: ["scrollLock"],
             allowedStyleKeys: ALLOWED_STYLE_KEYS_LIST,
             schemaExample: TRANSFORM_SCHEMA_HINT,
             previousPlan,
@@ -314,6 +319,12 @@ window.PersoAiClient = (() => {
         errors.push(`Rule ${index} css rules need rule.css as a string (got ${got}). Use type style with styles for property changes.`);
       } else if (/@import|url\s*\(|expression\s*\(|javascript:|position\s*:\s*fixed|z-index\s*:\s*9999/i.test(rule.css)) {
         errors.push(`Rule ${index} CSS contains a blocked pattern.`);
+      }
+    }
+
+    if (rule.type === "capability") {
+      if (!ALLOWED_CAPABILITIES.has(rule.capability)) {
+        errors.push(`Rule ${index} has unsupported capability ${rule.capability}.`);
       }
     }
   }

@@ -1,4 +1,4 @@
-import { ALLOWED_RULE_TYPES, ALLOWED_STYLE_KEYS } from "./schema.js";
+import { ALLOWED_CAPABILITIES, ALLOWED_RULE_TYPES, ALLOWED_STYLE_KEYS } from "./schema.js";
 
 const CSS_DANGER_PATTERNS = [
   /@import/i,
@@ -88,5 +88,9 @@ function validateRule(rule, index, errors, targetRefs) {
     if (CSS_DANGER_PATTERNS.some((pattern) => pattern.test(rule.css))) {
       errors.push(`Rule ${index} CSS contains a blocked pattern.`);
     }
+  }
+
+  if (rule.type === "capability" && !ALLOWED_CAPABILITIES.has(rule.capability)) {
+    errors.push(`Rule ${index} has unsupported capability ${rule.capability}.`);
   }
 }
