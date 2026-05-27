@@ -109,6 +109,7 @@ window.PersoAiClient = (() => {
             "Prefer specific scoped selectors from hierarchyCandidates or selectorHints over broad shared classes that match many unrelated elements.",
             "User selections mark what the user pointed at. Infer broader targets when the prompt implies a class of elements, such as all video titles.",
             "Build targetMap entries with CSS selectors that match the intended elements on this page.",
+            "Use browser-standard CSS selectors only. Never use Playwright-only selectors or pseudo-classes such as :has-text(), :text(), or :contains(). Avoid :has() unless there is no simpler selector.",
             "Each targetMap entry must include selectors and may include fallbackSelectors.",
             "If a target comes from a user selection, set source to selection and include selectionRef.",
             "If a target is inferred from page patterns, set source to inferred.",
@@ -117,7 +118,9 @@ window.PersoAiClient = (() => {
             "If the user asks for one specific change, return only the minimal rules needed.",
             "Prefer type style with a styles object for color, size, spacing, borders, backgrounds, and other standard CSS properties.",
             "Use type css only when a raw CSS declaration block is truly necessary. css rules must include a css string field.",
+            "If a rule targets one targetRef and only needs declarations such as display: none, use type style with styles instead of type css.",
             "Do not use type css for simple property changes such as color red or font-size 16px.",
+            "For hiding/removing elements, prefer type visibility with action hide, or type style with display none. Do not set styles.visibility.",
             "Use type capability only for trusted extension-owned behaviors. The only allowed capability is scrollLock.",
             "For requests such as stop scrolling, prevent scrolling, or show only the first loaded item, use a capability rule with capability scrollLock instead of raw JavaScript.",
             "A scrollLock capability rule should target the page, feed, or main content area and may include options.preserveSelectors for the first item that should remain visible.",
@@ -331,7 +334,7 @@ window.PersoAiClient = (() => {
 
   function normalizePlan(payload, prompt, pageContext, selections) {
     const rules = Array.isArray(payload.rules)
-      ? payload.rules.map((rule, index) => normalizeRule(rule, index))
+      ? payload.rules.flatMap((rule, index) => normalizeRule(rule, index))
       : [];
 
     return {
@@ -349,16 +352,39 @@ window.PersoAiClient = (() => {
         ariaLabel,
         text: text?.slice(0, 120)
       })),
-      targetMap: payload.targetMap || {},
+      targetMap: normalizeTargetMap(payload.targetMap || {}),
       rules
     };
   }
 
   function normalizeRule(rule, index) {
-    if (!rule || typeof rule !== "object") return rule;
+    if (!rule || typeof rule !== "object") return [rule];
 
     const normalized = { ...rule };
     const styles = normalized.styles || normalized.style;
+
+    if (normalized.type === "visibility" && !["hide", "show", "dim"].includes(String(normalized.action || "").trim().toLowerCase())) {
+      log.info("plan.rule.normalized", { index, from: `visibility:${normalized.action}`, to: "visibility:hide" });
+      normalized.action = "hide";
+      return [normalized];
+    }
+
+    if (normalized.type === "visibility" && normalized.action) {
+      normalized.action = String(normalized.action).trim().toLowerCase();
+      return [normalized];
+    }
+
+    if (normalized.type === "css" && normalized.targetRef && typeof normalized.css === "string" && !normalized.css.includes("{")) {
+      const parsedStyles = parseCssDeclarations(normalized.css);
+      if (Object.keys(parsedStyles).length) {
+        log.info("plan.rule.normalized", { index, from: "target-css-declarations", to: "style" });
+        return normalizeRule({
+          ...normalized,
+          type: "style",
+          styles: parsedStyles
+        }, index);
+      }
+    }
 
     if (styles && typeof styles === "object" && !Array.isArray(styles)) {
       normalized.styles = styles;
@@ -369,6 +395,20 @@ window.PersoAiClient = (() => {
         normalized.type = "style";
         delete normalized.css;
       }
+
+      const visibilityValue = String(normalized.styles.visibility || "").trim().toLowerCase();
+      if (["hidden", "collapse", "none"].includes(visibilityValue)) {
+        delete normalized.styles.visibility;
+        const visibilityRule = {
+          id: `${normalized.id || normalized.targetRef || "target"}-visibility-hide`,
+          type: "visibility",
+          targetRef: normalized.targetRef,
+          action: "hide"
+        };
+        log.info("plan.rule.normalized", { index, from: "style.visibility", to: "visibility:hide" });
+        if (!Object.keys(normalized.styles).length) return [visibilityRule];
+        return [normalized, visibilityRule];
+      }
     }
 
     if (normalized.type === "css" && typeof normalized.css !== "string" && normalized.css && typeof normalized.css === "object") {
@@ -378,12 +418,51 @@ window.PersoAiClient = (() => {
       delete normalized.css;
     }
 
+    return [normalized];
+  }
+
+  function normalizeTargetMap(targetMap) {
+    const normalized = {};
+    Object.entries(targetMap || {}).forEach(([key, target]) => {
+      if (!target || typeof target !== "object") {
+        normalized[key] = target;
+        return;
+      }
+
+      const selectors = sanitizeSelectors(target.selectors || []);
+      const fallbackSelectors = sanitizeSelectors(target.fallbackSelectors || []);
+      normalized[key] = {
+        ...target,
+        selectors: selectors.length ? selectors : fallbackSelectors,
+        fallbackSelectors: selectors.length ? fallbackSelectors : []
+      };
+    });
     return normalized;
+  }
+
+  function sanitizeSelectors(selectors) {
+    return Array.from(new Set((selectors || [])
+      .filter((selector) => typeof selector === "string")
+      .map((selector) => selector.trim())
+      .filter((selector) => selector && !/:has\b|:has-text\b|:text\b|:contains\b/i.test(selector))));
+  }
+
+  function parseCssDeclarations(css) {
+    const styles = {};
+    String(css || "").split(";").forEach((declaration) => {
+      const [rawKey, ...rawValue] = declaration.split(":");
+      if (!rawKey || !rawValue.length) return;
+      const key = rawKey.trim().replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+      const value = rawValue.join(":").replace(/\s*!important\b/i, "").trim();
+      if (key && value) styles[key] = value;
+    });
+    return styles;
   }
 
   function isValidSelector(selector) {
     if (typeof selector !== "string" || selector.length > 240) return false;
     if (/[{};]/.test(selector)) return false;
+    if (/:has\b|:has-text\b|:text\b|:contains\b/i.test(selector)) return false;
 
     try {
       document.querySelector(selector);
