@@ -126,6 +126,7 @@ window.PersoAiClient = (() => {
             "A scrollLock capability rule should target the page, feed, or main content area and may include options.preserveSelectors for the first item that should remain visible.",
             "Use only allowed style properties.",
             "If an attached image should be used, set backgroundImage to asset:<assetId>, for example asset:uploadedImage.",
+            "When setting a background image, always include backgroundSize: \"cover\", backgroundPosition: \"center center\", and backgroundRepeat: \"no-repeat\"; if the user asks for a page/background theme, also use backgroundAttachment: \"fixed\" unless it targets a small component.",
             "Never use local filesystem paths in CSS."
           ].join(" ")
         },
