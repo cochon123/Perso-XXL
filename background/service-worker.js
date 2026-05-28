@@ -6,19 +6,29 @@ const CONTENT_FILES = [
   "content/dom-context.js",
   "content/executor.js",
   "content/ai-client.js",
+  "content/vendor/gsap.min.js",
+  "ai-input/main.js",
   "content/content.js"
 ];
 
-chrome.action.onClicked.addListener(async (tab) => {
+const CONTENT_CSS_FILES = [
+  "content/base.css",
+  "content/ai-input.css",
+  "ai-input/embedded.css"
+];
+
+const extensionApi = globalThis.browser || globalThis.chrome;
+
+extensionApi.action.onClicked.addListener(async (tab) => {
   if (!isSupportedTab(tab)) return;
   console.log("[Perso XXL] action clicked", { tabId: tab.id, url: tab.url });
   await togglePalette(tab.id);
 });
 
-chrome.commands.onCommand.addListener(async (command) => {
+extensionApi.commands.onCommand.addListener(async (command) => {
   if (command !== "open-command-palette") return;
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await extensionApi.tabs.query({ active: true, currentWindow: true });
   if (!isSupportedTab(tab)) return;
 
   console.log("[Perso XXL] command palette requested", { tabId: tab.id, url: tab.url });
@@ -31,20 +41,20 @@ function isSupportedTab(tab) {
 
 async function togglePalette(tabId) {
   await ensureContentScript(tabId);
-  await chrome.tabs.sendMessage(tabId, { type: "PERSO_TOGGLE_PANEL" });
+  await extensionApi.tabs.sendMessage(tabId, { type: "PERSO_TOGGLE_PANEL" });
 }
 
 async function ensureContentScript(tabId) {
   try {
-    await chrome.tabs.sendMessage(tabId, { type: "PERSO_PING" });
+    await extensionApi.tabs.sendMessage(tabId, { type: "PERSO_PING" });
     return;
   } catch (_error) {
-    await chrome.scripting.insertCSS({
+    await extensionApi.scripting.insertCSS({
       target: { tabId },
-      files: ["content/base.css"]
+      files: CONTENT_CSS_FILES
     });
 
-    await chrome.scripting.executeScript({
+    await extensionApi.scripting.executeScript({
       target: { tabId },
       files: CONTENT_FILES
     });

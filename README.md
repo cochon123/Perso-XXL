@@ -1,6 +1,6 @@
 # Perso XXL
 
-Perso XXL is a Chrome/Chromium extension that generates and applies AI-personalized website layout plans through OpenRouter.
+Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies AI-personalized website layout plans through OpenRouter.
 
 ## What is implemented
 
@@ -14,7 +14,7 @@ Perso XXL is a Chrome/Chromium extension that generates and applies AI-personali
 - Background injection fallback so the command palette can open on already-loaded pages after extension reloads.
 - Saved plans are stored per hostname + pathname and reapply when the page changes.
 
-## Load locally
+## Load locally in Chrome/Chromium
 
 Start the dev log terminal:
 
@@ -33,6 +33,22 @@ node scripts/log-server.mjs
 For local images, use "Attach image" in the command palette. Browser extensions cannot read a local path typed into the prompt, such as `/home/me/image.png`, without an explicit file picker selection.
 
 With the log server running, extension events will stream into your terminal.
+
+## Load locally in Firefox
+
+Start the dev log terminal:
+
+```sh
+node scripts/log-server.mjs
+```
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. Choose "Load Temporary Add-on...".
+3. Select `manifest.json` from this directory.
+4. Open any `http` or `https` website.
+5. Click the extension icon, or press `Ctrl+Shift+P`, to open the centered Perso XXL command palette.
+
+Temporary add-ons are removed when Firefox restarts, so reload the manifest from `about:debugging` after restarting the browser.
 
 ## OpenRouter key
 

@@ -7,13 +7,14 @@ let panel = null;
 let suppressMutationApplyUntil = 0;
 let zeroMatchRetryCount = 0;
 let selectionCounter = 0;
+const extensionApi = globalThis.browser || globalThis.chrome;
 
 log.info("content.loaded", {
   version: CONTENT_VERSION,
   hasSavedPlan: false
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+extensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "PERSO_PING") {
     sendResponse({ ok: true, version: CONTENT_VERSION });
     return true;
@@ -37,14 +38,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
-chrome.storage.local.get([getPlanStorageKey()], (state) => {
-  const savedPlan = state[getPlanStorageKey()];
-  log.info("storage.loaded", { key: getPlanStorageKey(), hasSavedPlan: Boolean(savedPlan) });
-  if (savedPlan) {
-    currentPlan = savedPlan;
-    applyCurrentPlan();
-  }
-});
+loadSavedPlan();
 
 const observer = new MutationObserver((mutations) => {
   if (!currentPlan) return;
@@ -292,7 +286,7 @@ function initExtensionHost() {
 }
 
 async function loadPanelState() {
-  const state = await chrome.storage.local.get(["profileNotes", getPlanStorageKey()]);
+  const state = await extensionApi.storage.local.get(["profileNotes", getPlanStorageKey()]);
   const savedPlan = state[getPlanStorageKey()];
   const editor = panel?.querySelector("#prompt-editor");
 
@@ -434,7 +428,7 @@ async function generateAndApplyPlan({ prompt, tokens }) {
 
   currentPlan = plan;
   zeroMatchRetryCount = 0;
-  await chrome.storage.local.set({
+  await extensionApi.storage.local.set({
     profileNotes: prompt,
     [getPlanStorageKey()]: plan
   });
@@ -449,7 +443,7 @@ async function revertAppliedPlan() {
   zeroMatchRetryCount = 0;
   suppressMutationApplyUntil = Date.now() + 1200;
   window.PersoExecutor.revertPlan();
-  await chrome.storage.local.remove([getPlanStorageKey()]);
+  await extensionApi.storage.local.remove([getPlanStorageKey()]);
   log.info("plan.reverted", { key: getPlanStorageKey() });
 }
 
@@ -468,6 +462,16 @@ function buildPageContext() {
 
 function getPlanStorageKey() {
   return `sitePlan:${location.hostname}:${location.pathname}`;
+}
+
+async function loadSavedPlan() {
+  const state = await extensionApi.storage.local.get([getPlanStorageKey()]);
+  const savedPlan = state[getPlanStorageKey()];
+  log.info("storage.loaded", { key: getPlanStorageKey(), hasSavedPlan: Boolean(savedPlan) });
+  if (savedPlan) {
+    currentPlan = savedPlan;
+    applyCurrentPlan();
+  }
 }
 
 function readFileAsDataUrl(file) {
