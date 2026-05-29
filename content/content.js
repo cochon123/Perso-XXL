@@ -1,5 +1,5 @@
 const log = window.PersoLogger;
-const CONTENT_VERSION = "0.6.0-landing-ai-input";
+const CONTENT_VERSION = "0.7.0-chat-interface";
 let currentPlan = null;
 let currentSiteRecord = null;
 let applyTimer = null;
@@ -8,9 +8,32 @@ let panel = null;
 let suppressMutationApplyUntil = 0;
 let zeroMatchRetryCount = 0;
 let selectionCounter = 0;
+/** @type {string | null} */
+let focusedModId = null;
+/** @type {HTMLElement | null} */
+let modPreviewOverlay = null;
 const extensionApi = globalThis.browser || globalThis.chrome;
 const SITE_RECORD_PREFIX = "siteRecord:";
 const LEGACY_PLAN_PREFIX = "sitePlan:";
+
+function injectPanelFontFace() {
+  const styleId = "perso-xxl-font-face";
+  if (document.getElementById(styleId)) return;
+
+  let fontUrl;
+  try {
+    fontUrl = extensionApi.runtime.getURL("chat-interface/fonts/Chewy-Regular.ttf");
+  } catch (_error) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = styleId;
+  style.textContent = `@font-face{font-family:"Chewy";font-style:normal;font-weight:400;font-display:swap;src:url("${fontUrl}") format("truetype");}`;
+  (document.head || document.documentElement).appendChild(style);
+}
+
+injectPanelFontFace();
 
 log.info("content.loaded", {
   version: CONTENT_VERSION,
@@ -35,6 +58,13 @@ extensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     currentPlan = message.plan;
     applyCurrentPlan();
     sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message?.type === "PERSO_OPEN_MOD_PREVIEW") {
+    openModificationPreview(message)
+      .then((result) => sendResponse(result))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
   }
 
@@ -105,12 +135,19 @@ function togglePanel() {
 function openPanel() {
   if (!panel) return;
   panel.hidden = false;
+  if (focusedModId) {
+    setPanelMode("mod-focus");
+    renderModificationPreview(getFocusedModification());
+  } else {
+    setPanelMode("chat");
+  }
   log.info("panel.visibility.changed", { hidden: false });
   loadPanelState();
 }
 
 function closePanel() {
   if (!panel || panel.hidden) return;
+  exitModificationPreview();
   panel.hidden = true;
   log.info("panel.visibility.changed", { hidden: true });
 }
@@ -135,16 +172,6 @@ function createAiInputMarkup() {
   return `
     <div class="perso-xxl-panel-backdrop" aria-hidden="true"></div>
     <div class="preview-stack" id="preview-stack">
-      <div class="perso-xxl-page-manager" id="page-manager" hidden>
-        <div class="perso-xxl-page-manager__head">
-          <div>
-            <strong>Page modifications</strong>
-            <span id="page-manager-count">0 active</span>
-          </div>
-          <button type="button" id="open-dashboard-btn" aria-label="Open dashboard">Dashboard</button>
-        </div>
-        <div class="perso-xxl-mod-list" id="mod-list"></div>
-      </div>
       <div class="ai-sent-list" id="sent-list" aria-live="polite"></div>
 
       <div class="ai-input" id="ai-input" data-state="idle" data-multiline="false">
@@ -171,6 +198,20 @@ function createAiInputMarkup() {
             </button>
 
             <div class="ai-input__menu" id="attach-menu" role="menu" hidden>
+              <button type="button" class="ai-input__menu-item" role="menuitem" data-action="dashboard">
+                <span class="ai-input__menu-icon">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="3" y="3" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                    <rect x="13" y="3" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                    <rect x="3" y="13" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                    <rect x="13" y="13" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                  </svg>
+                </span>
+                <span class="ai-input__menu-text">
+                  <strong>Dashboard</strong>
+                  <small>Manage modifications</small>
+                </span>
+              </button>
               <button type="button" class="ai-input__menu-item" role="menuitem" data-action="image">
                 <span class="ai-input__menu-icon">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -246,6 +287,23 @@ function createAiInputMarkup() {
         </div>
       </div>
     </div>
+    <div class="mod-focus-stack" id="mod-focus-stack" hidden>
+      <div class="mod-focus-card">
+        <div class="mod-focus-head">
+          <button type="button" class="mod-focus-edit" id="mod-focus-edit" aria-label="Rename modification">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0-3-3L5 17v3z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <p class="mod-focus-title" id="mod-focus-title"></p>
+          <input type="text" class="mod-focus-title-input" id="mod-focus-title-input" maxlength="120" hidden />
+        </div>
+        <div class="mod-focus-actions">
+          <button type="button" id="mod-focus-toggle">Disable</button>
+          <button type="button" id="mod-focus-delete">Delete</button>
+        </div>
+      </div>
+    </div>
     <div class="toast productivity-toast" id="toast" role="status" aria-live="polite"></div>
   `;
 }
@@ -255,30 +313,7 @@ function createPanel() {
   root.id = "perso-xxl-panel";
   root.hidden = true;
   root.innerHTML = createAiInputMarkup();
-  attachPageManager(root);
   return root;
-}
-
-function attachPageManager(root) {
-  root.querySelector("#open-dashboard-btn")?.addEventListener("click", () => {
-    try {
-      const result = extensionApi.runtime.sendMessage({ type: "PERSO_OPEN_DASHBOARD" });
-      if (result?.catch) result.catch(() => {});
-    } catch (_error) {}
-  });
-
-  root.querySelector("#mod-list")?.addEventListener("click", async (event) => {
-    const button = event.target.closest("[data-mod-action]");
-    if (!button) return;
-    const id = button.closest("[data-mod-id]")?.dataset.modId;
-    if (!id) return;
-
-    if (button.dataset.modAction === "toggle") {
-      await setModificationEnabled(id, button.getAttribute("aria-pressed") !== "true");
-    } else if (button.dataset.modAction === "delete") {
-      await deleteModification(id);
-    }
-  });
 }
 
 function initExtensionHost() {
@@ -317,6 +352,13 @@ function initExtensionHost() {
 
     async onRevert() {
       await revertAppliedPlan();
+    },
+
+    openDashboard() {
+      try {
+        const result = extensionApi.runtime.sendMessage({ type: "PERSO_OPEN_DASHBOARD" });
+        if (result?.catch) result.catch(() => {});
+      } catch (_error) {}
     }
   };
 }
@@ -345,7 +387,6 @@ async function loadPanelState() {
     key: getSiteRecordKey()
   });
 
-  refreshPageManager();
   refreshConversationPreview();
   editor?.focus?.();
 }
@@ -526,9 +567,8 @@ async function generateAndApplyPlan({ prompt, tokens }) {
     profileNotes: prompt,
     [getSiteRecordKey()]: currentSiteRecord
   });
-  refreshPageManager();
-  refreshConversationPreview();
   log.info("storage.saved", { key: getSiteRecordKey(), hasProfileNotes: Boolean(prompt), modificationCount: currentSiteRecord.modifications.length });
+  refreshConversationPreview();
   applyCurrentPlan();
   log.info("panel.task.finished", { message: "Plan generated." });
 }
@@ -548,7 +588,6 @@ async function revertAppliedPlan() {
   zeroMatchRetryCount = 0;
   suppressMutationApplyUntil = Date.now() + 1200;
   window.PersoExecutor.revertPlan();
-  refreshPageManager();
   refreshConversationPreview();
   log.info("plan.reverted", { key: getSiteRecordKey() });
 }
@@ -591,7 +630,6 @@ async function loadSavedPlan() {
   currentSiteRecord = record;
   currentPlan = composeEnabledPlan(currentSiteRecord);
   log.info("storage.loaded", { key: getSiteRecordKey(), modificationCount: record.modifications.length });
-  refreshPageManager();
   refreshConversationPreview();
   if (currentPlan) {
     applyCurrentPlan();
@@ -731,7 +769,6 @@ async function setModificationEnabled(id, enabled) {
   currentSiteRecord.lastUpdatedAt = new Date().toISOString();
   await saveSiteRecord(currentSiteRecord);
   currentPlan = composeEnabledPlan(currentSiteRecord);
-  refreshPageManager();
   refreshConversationPreview();
   suppressMutationApplyUntil = Date.now() + 1200;
   window.PersoExecutor.revertPlan();
@@ -744,40 +781,240 @@ async function deleteModification(id) {
   currentSiteRecord.lastUpdatedAt = new Date().toISOString();
   await saveSiteRecord(currentSiteRecord);
   currentPlan = composeEnabledPlan(currentSiteRecord);
-  refreshPageManager();
   refreshConversationPreview();
   suppressMutationApplyUntil = Date.now() + 1200;
   window.PersoExecutor.revertPlan();
   applyCurrentPlan();
 }
 
-function refreshPageManager() {
+async function renameModification(id, title) {
+  const nextTitle = String(title || "").trim();
+  if (!nextTitle) return false;
+
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  const exists = currentSiteRecord.modifications.some((modification) => modification.id === id);
+  if (!exists) return false;
+
+  currentSiteRecord.modifications = currentSiteRecord.modifications.map((modification) => (
+    modification.id === id
+      ? { ...modification, title: nextTitle, updatedAt: new Date().toISOString() }
+      : modification
+  ));
+  currentSiteRecord.lastUpdatedAt = new Date().toISOString();
+  await saveSiteRecord(currentSiteRecord);
+  renderModificationPreview(getFocusedModification());
+  return true;
+}
+
+function getFocusedModification() {
+  if (!focusedModId || !currentSiteRecord) return null;
+  return currentSiteRecord.modifications.find((modification) => modification.id === focusedModId) || null;
+}
+
+async function openModificationPreview({ modId, recordKey }) {
+  if (!modId) throw new Error("Missing modification id.");
+
+  const key = recordKey || getSiteRecordKey();
+  const state = await extensionApi.storage.local.get([key]);
+  const record = normalizeSiteRecord(state[key]);
+  const modification = record.modifications.find((entry) => entry.id === modId);
+  if (!modification) throw new Error("Modification not found on this page.");
+
+  currentSiteRecord = record;
+  currentPlan = composeEnabledPlan(currentSiteRecord);
+  applyCurrentPlan();
+
+  focusedModId = modId;
+  setPanelMode("mod-focus");
+  renderModificationPreview(modification);
+  highlightModificationTargets(modification);
+  openPanel();
+  log.info("mod.preview.opened", { modId });
+  return { ok: true };
+}
+
+function exitModificationPreview() {
+  if (!focusedModId) return;
+  focusedModId = null;
+  clearModificationHighlights();
+  setPanelMode("chat");
+}
+
+function setPanelMode(mode) {
   if (!panel) return;
-  const manager = panel.querySelector("#page-manager");
-  const list = panel.querySelector("#mod-list");
-  const count = panel.querySelector("#page-manager-count");
-  const record = normalizeSiteRecord(currentSiteRecord);
-  const modifications = record.modifications;
-  manager.hidden = modifications.length === 0;
-  if (count) {
-    const active = modifications.filter((modification) => modification.enabled).length;
-    count.textContent = `${active}/${modifications.length} active`;
+  const chatStack = panel.querySelector("#preview-stack");
+  const focusStack = panel.querySelector("#mod-focus-stack");
+  const isFocus = mode === "mod-focus";
+  if (chatStack) chatStack.hidden = isFocus;
+  if (focusStack) focusStack.hidden = !isFocus;
+  panel.dataset.mode = mode;
+}
+
+function renderModificationPreview(modification) {
+  if (!panel || !modification) return;
+
+  const titleEl = panel.querySelector("#mod-focus-title");
+  const inputEl = panel.querySelector("#mod-focus-title-input");
+  const toggleBtn = panel.querySelector("#mod-focus-toggle");
+  const enabled = modification.enabled !== false;
+
+  if (titleEl) titleEl.textContent = modification.title || "Modification";
+  if (inputEl) {
+    inputEl.value = modification.title || "Modification";
+    inputEl.hidden = true;
   }
-  if (!list) return;
-  list.innerHTML = modifications.map((modification) => `
-    <div class="perso-xxl-mod-item" data-mod-id="${escapeHtml(modification.id)}">
-      <div class="perso-xxl-mod-item__text">
-        <strong>${escapeHtml(modification.title)}</strong>
-        <span>${escapeHtml(modification.sourcePrompt || "")}</span>
-      </div>
-      <div class="perso-xxl-mod-item__actions">
-        <button type="button" data-mod-action="toggle" aria-pressed="${modification.enabled ? "true" : "false"}">
-          ${modification.enabled ? "On" : "Off"}
-        </button>
-        <button type="button" data-mod-action="delete">Remove</button>
-      </div>
-    </div>
-  `).join("");
+  if (titleEl) titleEl.hidden = false;
+  if (toggleBtn) toggleBtn.textContent = enabled ? "Disable" : "Enable";
+}
+
+function attachModFocusInteractions() {
+  const editBtn = panel?.querySelector("#mod-focus-edit");
+  const titleEl = panel?.querySelector("#mod-focus-title");
+  const inputEl = panel?.querySelector("#mod-focus-title-input");
+  const toggleBtn = panel?.querySelector("#mod-focus-toggle");
+  const deleteBtn = panel?.querySelector("#mod-focus-delete");
+
+  editBtn?.addEventListener("click", () => {
+    if (!inputEl || !titleEl) return;
+    titleEl.hidden = true;
+    inputEl.hidden = false;
+    inputEl.focus();
+    inputEl.select();
+  });
+
+  inputEl?.addEventListener("keydown", async (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      await commitModificationRename();
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelModificationRename();
+    }
+  });
+
+  inputEl?.addEventListener("blur", () => {
+    commitModificationRename();
+  });
+
+  toggleBtn?.addEventListener("click", async () => {
+    if (!focusedModId) return;
+    const modification = getFocusedModification();
+    if (!modification) return;
+    await setModificationEnabled(focusedModId, modification.enabled === false);
+    renderModificationPreview(getFocusedModification());
+  });
+
+  deleteBtn?.addEventListener("click", async () => {
+    if (!focusedModId) return;
+    const id = focusedModId;
+    exitModificationPreview();
+    await deleteModification(id);
+    closePanel();
+  });
+}
+
+async function commitModificationRename() {
+  const inputEl = panel?.querySelector("#mod-focus-title-input");
+  const titleEl = panel?.querySelector("#mod-focus-title");
+  if (!inputEl || !titleEl || !focusedModId || inputEl.hidden) return;
+
+  const saved = await renameModification(focusedModId, inputEl.value);
+  inputEl.hidden = true;
+  titleEl.hidden = false;
+  if (!saved) {
+    titleEl.textContent = getFocusedModification()?.title || "Modification";
+  }
+}
+
+function cancelModificationRename() {
+  const inputEl = panel?.querySelector("#mod-focus-title-input");
+  const titleEl = panel?.querySelector("#mod-focus-title");
+  if (!inputEl || !titleEl) return;
+  inputEl.value = getFocusedModification()?.title || "Modification";
+  inputEl.hidden = true;
+  titleEl.hidden = false;
+}
+
+function highlightModificationTargets(modification) {
+  clearModificationHighlights();
+  const elements = collectModificationTargetElements(modification);
+  if (!elements.length) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = "perso-xxl-mod-preview-overlay";
+  overlay.setAttribute("data-perso-xxl-ui", "true");
+
+  elements.forEach((element) => {
+    const box = document.createElement("div");
+    box.className = "perso-xxl-mod-preview-highlight";
+    box.dataset.persoPreviewTarget = "true";
+    positionPreviewHighlight(box, element);
+    overlay.appendChild(box);
+  });
+
+  document.documentElement.appendChild(overlay);
+  modPreviewOverlay = overlay;
+  window.addEventListener("scroll", refreshModificationHighlights, true);
+  window.addEventListener("resize", refreshModificationHighlights);
+}
+
+function refreshModificationHighlights() {
+  if (!modPreviewOverlay) return;
+  const modification = getFocusedModification();
+  if (!modification) return;
+
+  const elements = collectModificationTargetElements(modification);
+  modPreviewOverlay.replaceChildren();
+
+  elements.forEach((element) => {
+    const box = document.createElement("div");
+    box.className = "perso-xxl-mod-preview-highlight";
+    positionPreviewHighlight(box, element);
+    modPreviewOverlay.appendChild(box);
+  });
+}
+
+function positionPreviewHighlight(box, element) {
+  const rect = element.getBoundingClientRect();
+  box.style.top = `${rect.top}px`;
+  box.style.left = `${rect.left}px`;
+  box.style.width = `${Math.max(rect.width, 1)}px`;
+  box.style.height = `${Math.max(rect.height, 1)}px`;
+}
+
+function collectModificationTargetElements(modification) {
+  const plan = modification?.plan;
+  if (!plan) return [];
+
+  const elements = new Set();
+  const targetRefs = new Set((plan.rules || []).map((rule) => rule.targetRef).filter(Boolean));
+
+  Object.entries(plan.targetMap || {}).forEach(([key, target]) => {
+    if (targetRefs.size && !targetRefs.has(key)) return;
+    resolvePreviewSelectors(target).forEach((selector) => {
+      try {
+        document.querySelectorAll(selector).forEach((element) => {
+          if (!isPersoNode(element)) elements.add(element);
+        });
+      } catch (_error) {}
+    });
+  });
+
+  return Array.from(elements);
+}
+
+function resolvePreviewSelectors(target) {
+  const primary = (target?.selectors || []).filter(Boolean);
+  if (primary.length) return primary;
+  return (target?.fallbackSelectors || []).filter(Boolean);
+}
+
+function clearModificationHighlights() {
+  window.removeEventListener("scroll", refreshModificationHighlights, true);
+  window.removeEventListener("resize", refreshModificationHighlights);
+  modPreviewOverlay?.remove();
+  modPreviewOverlay = null;
 }
 
 function refreshConversationPreview() {
@@ -840,8 +1077,17 @@ extensionApi.storage.onChanged?.addListener((changes, area) => {
   if (area !== "local" || !changes[getSiteRecordKey()]) return;
   currentSiteRecord = normalizeSiteRecord(changes[getSiteRecordKey()].newValue);
   currentPlan = composeEnabledPlan(currentSiteRecord);
-  refreshPageManager();
   refreshConversationPreview();
+  if (focusedModId) {
+    const modification = getFocusedModification();
+    if (modification) {
+      renderModificationPreview(modification);
+      highlightModificationTargets(modification);
+    } else {
+      exitModificationPreview();
+      setPanelMode("chat");
+    }
+  }
   suppressMutationApplyUntil = Date.now() + 1200;
   window.PersoExecutor.revertPlan();
   applyCurrentPlan();
@@ -851,5 +1097,6 @@ initExtensionHost();
 panel = createPanel();
 document.documentElement.appendChild(panel);
 attachPanelInteractions();
+attachModFocusInteractions();
 log.info("panel.created");
 loadPanelState();

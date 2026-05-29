@@ -7,14 +7,14 @@ const CONTENT_FILES = [
   "content/executor.js",
   "content/ai-client.js",
   "content/vendor/gsap.min.js",
-  "ai-input/main.js",
+  "chat-interface/main.js",
   "content/content.js"
 ];
 
 const CONTENT_CSS_FILES = [
   "content/base.css",
-  "content/ai-input.css",
-  "ai-input/embedded.css"
+  "content/chat-interface.css",
+  "chat-interface/embedded.css"
 ];
 
 const extensionApi = globalThis.browser || globalThis.chrome;
@@ -42,6 +42,13 @@ extensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "PERSO_OPEN_MOD_PREVIEW") {
+    openModificationPreview(message)
+      .then((result) => sendResponse(result))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
   if (message?.type === "PERSO_FETCH_IMAGE_ASSET") {
     fetchImageAsset(message.url)
       .then((asset) => sendResponse({ ok: true, ...asset }))
@@ -59,6 +66,88 @@ function isSupportedTab(tab) {
 async function togglePalette(tabId) {
   await ensureContentScript(tabId);
   await extensionApi.tabs.sendMessage(tabId, { type: "PERSO_TOGGLE_PANEL" });
+}
+
+async function openModificationPreview({ url, recordKey, modId }) {
+  if (!url || !modId) {
+    throw new Error("Missing preview target.");
+  }
+
+  const tab = await findOrCreateTab(url);
+  await waitForTabComplete(tab.id);
+  await ensureContentScript(tab.id);
+  await sendTabMessage(tab.id, {
+    type: "PERSO_OPEN_MOD_PREVIEW",
+    recordKey,
+    modId
+  });
+  return { ok: true, tabId: tab.id };
+}
+
+function urlsMatch(tabUrl, targetUrl) {
+  try {
+    const tab = new URL(tabUrl);
+    const target = new URL(targetUrl);
+    if (tab.origin !== target.origin) return false;
+    const tabPath = tab.pathname.replace(/\/$/, "") || "/";
+    const targetPath = target.pathname.replace(/\/$/, "") || "/";
+    return tabPath === targetPath;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function findOrCreateTab(url) {
+  const tabs = await extensionApi.tabs.query({});
+  const existing = tabs.find((tab) => urlsMatch(tab.url || "", url));
+  if (existing?.id) {
+    await extensionApi.tabs.update(existing.id, { active: true });
+    if (existing.windowId) {
+      await extensionApi.windows.update(existing.windowId, { focused: true });
+    }
+    return existing;
+  }
+
+  return extensionApi.tabs.create({ url, active: true });
+}
+
+function waitForTabComplete(tabId) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(resolve, 8000);
+
+    function onUpdated(updatedTabId, info) {
+      if (updatedTabId !== tabId || info.status !== "complete") return;
+      extensionApi.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timeout);
+      resolve();
+    }
+
+    extensionApi.tabs.onUpdated.addListener(onUpdated);
+    extensionApi.tabs.get(tabId).then((tab) => {
+      if (tab.status === "complete") {
+        extensionApi.tabs.onUpdated.removeListener(onUpdated);
+        clearTimeout(timeout);
+        resolve();
+      }
+    }).catch(() => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
+async function sendTabMessage(tabId, message, attempts = 8) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await extensionApi.tabs.sendMessage(tabId, message);
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      await ensureContentScript(tabId);
+    }
+  }
+  throw lastError || new Error("Could not reach the page.");
 }
 
 async function ensureContentScript(tabId) {

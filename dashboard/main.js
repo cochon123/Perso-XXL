@@ -10,6 +10,7 @@ const modCount = document.getElementById("mod-count");
 const activeCount = document.getElementById("active-count");
 
 let records = [];
+let mockMode = false;
 
 refreshBtn.addEventListener("click", loadRecords);
 searchInput.addEventListener("input", render);
@@ -17,7 +18,52 @@ siteList.addEventListener("click", handleActionClick);
 
 loadRecords();
 
+function hasExtensionStorage() {
+  return Boolean(extensionApi?.storage?.local?.get);
+}
+
+function isMockModeRequested() {
+  const param = new URLSearchParams(location.search).get("mock");
+  if (param === "1") return true;
+  if (param === "0") return false;
+  return !hasExtensionStorage();
+}
+
+function cloneMockRecords() {
+  const source = window.DASHBOARD_MOCK_RECORDS || [];
+  return source.map((record) => ({
+    ...record,
+    site: { ...record.site },
+    conversations: [...(record.conversations || [])],
+    modifications: record.modifications.map((mod) => ({ ...mod }))
+  }));
+}
+
+function setMockBannerVisible(visible) {
+  document.body.classList.toggle("dashboard--mock", visible);
+  let banner = document.getElementById("mock-banner");
+  if (!visible) {
+    banner?.remove();
+    return;
+  }
+  if (banner) return;
+  banner = document.createElement("p");
+  banner.id = "mock-banner";
+  banner.className = "mock-banner";
+  banner.textContent = "Preview mode — showing mock data. Load the extension to manage real modifications.";
+  document.querySelector(".dashboard-shell")?.prepend(banner);
+}
+
 async function loadRecords() {
+  mockMode = isMockModeRequested();
+  setMockBannerVisible(mockMode);
+
+  if (mockMode) {
+    records = cloneMockRecords();
+    render();
+    return;
+  }
+
   const data = await extensionApi.storage.local.get(null);
   records = Object.entries(data)
     .filter(([key, value]) => key.startsWith(SITE_RECORD_PREFIX) && value?.modifications?.length)
@@ -92,6 +138,9 @@ function renderModification(modification) {
         <p class="mod-meta">${escapeHtml(formatDate(modification.updatedAt || modification.createdAt))}</p>
       </div>
       <div class="mod-actions">
+        <button type="button" class="mod-action-icon" data-action="preview-mod" aria-label="Preview on page" title="Preview on page">
+          ${iconExternalLink()}
+        </button>
         <button type="button" data-action="toggle-mod">${enabled ? "Disable" : "Enable"}</button>
         <button type="button" data-action="delete-mod">Delete</button>
       </div>
@@ -109,6 +158,11 @@ async function handleActionClick(event) {
 
   const action = button.dataset.action;
   const modId = button.closest("[data-mod-id]")?.dataset.modId;
+
+  if (action === "preview-mod" && modId) {
+    await openModificationPreview(record, modId);
+    return;
+  }
 
   if (action === "toggle-mod" && modId) {
     record.modifications = record.modifications.map((mod) => (
@@ -132,21 +186,38 @@ async function handleActionClick(event) {
     await deleteRecord(record);
   }
 
-  await loadRecords();
+  if (!mockMode) {
+    await loadRecords();
+  }
 }
 
 async function saveRecord(record) {
+  record.lastUpdatedAt = new Date().toISOString();
+
+  if (mockMode) {
+    const index = records.findIndex((candidate) => candidate.key === record.key);
+    if (index >= 0) records[index] = record;
+    render();
+    return;
+  }
+
   const next = {
     version: 1,
     site: record.site,
     conversations: record.conversations,
     modifications: record.modifications,
-    lastUpdatedAt: new Date().toISOString()
+    lastUpdatedAt: record.lastUpdatedAt
   };
   await extensionApi.storage.local.set({ [record.key]: next });
 }
 
 async function deleteRecord(record) {
+  if (mockMode) {
+    records = records.filter((candidate) => candidate.key !== record.key);
+    render();
+    return;
+  }
+
   await extensionApi.storage.local.remove([record.key]);
 }
 
@@ -173,4 +244,35 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replaceAll("'", "&#39;");
+}
+
+function iconExternalLink() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14 4h6v6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M10 14 20 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      <path d="M19 14v5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+async function openModificationPreview(record, modId) {
+  const url = record.site?.url || record.key.replace(SITE_RECORD_PREFIX, "");
+  if (!url) return;
+
+  if (mockMode) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  try {
+    await extensionApi.runtime.sendMessage({
+      type: "PERSO_OPEN_MOD_PREVIEW",
+      url,
+      recordKey: record.key,
+      modId
+    });
+  } catch (_error) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 }

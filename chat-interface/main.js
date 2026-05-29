@@ -60,7 +60,26 @@ let isDone = false;
 
 const CONTROL_GROUPS = [
   {
-    title: 'Layout',
+    title: 'Stack',
+    controls: [
+      { key: '--ci-stack-gap', label: 'Section gap', type: 'range', min: 0, max: 24, step: 1, unit: 'px' },
+    ],
+  },
+  {
+    title: 'Chat history',
+    controls: [
+      { key: '--ci-bubble-gap', label: 'Bubble gap', type: 'range', min: 0, max: 20, step: 1, unit: 'px' },
+      { key: '--ci-bubble-padding-x', label: 'Padding X', type: 'range', min: 4, max: 24, step: 1, unit: 'px' },
+      { key: '--ci-bubble-padding-y', label: 'Padding Y', type: 'range', min: 4, max: 20, step: 1, unit: 'px' },
+      { key: '--ci-bubble-user-bg', label: 'User bg', type: 'color', default: '#2a111e' },
+      { key: '--ci-bubble-user-border', label: 'User border', type: 'color-alpha', default: 'rgba(255, 45, 122, 0.36)' },
+      { key: '--ci-bubble-assistant-bg', label: 'Assistant bg', type: 'color-alpha', default: 'rgba(255, 255, 255, 0.08)' },
+      { key: '--ci-bubble-assistant-border', label: 'Assistant border', type: 'color-alpha', default: 'rgba(255, 255, 255, 0.1)' },
+      { key: '--ci-bubble-assistant-text', label: 'Assistant text', type: 'color-alpha', default: 'rgba(250, 248, 249, 0.82)' },
+    ],
+  },
+  {
+    title: 'Composer layout',
     controls: [
       { key: '--ai-width', label: 'Width', type: 'range', min: 320, max: 720, step: 4, unit: 'px' },
       { key: '--ai-height', label: 'Height', type: 'range', min: 40, max: 72, step: 2, unit: 'px' },
@@ -353,7 +372,7 @@ function getAllCssVars() {
 }
 
 function buildCssExport(vars) {
-  const lines = ['.ai-input {'];
+  const lines = [':root {'];
   Object.entries(vars).forEach(([key, val]) => {
     lines.push(`  ${key}: ${val};`);
   });
@@ -362,7 +381,7 @@ function buildCssExport(vars) {
 }
 
 function buildJsonExport(vars) {
-  return JSON.stringify({ component: 'ai-input', cssVariables: vars }, null, 2);
+  return JSON.stringify({ component: 'chat-interface', cssVariables: vars }, null, 2);
 }
 
 function updateExport() {
@@ -391,6 +410,31 @@ function openMenu() {
 function closeMenu() {
   attachMenu.hidden = true;
   attachToggle.setAttribute('aria-expanded', 'false');
+}
+
+function openDashboard() {
+  closeMenu();
+  const api = hostApi();
+  if (api?.openDashboard) {
+    api.openDashboard();
+    return;
+  }
+
+  const extensionApi = globalThis.browser || globalThis.chrome;
+  if (extensionApi?.runtime?.sendMessage) {
+    try {
+      const result = extensionApi.runtime.sendMessage({ type: 'PERSO_OPEN_DASHBOARD' });
+      if (result?.catch) result.catch(() => {});
+    } catch (_error) {}
+    return;
+  }
+
+  if (isPlayground) {
+    window.open('../dashboard/index.html', '_blank', 'noopener');
+    return;
+  }
+
+  showToast('Dashboard is available in the extension.');
 }
 
 function toggleMenu() {
@@ -439,12 +483,13 @@ function getSingleRowEditorWidth() {
 
 const LAYOUT_ANIM_DURATION = 0.26;
 const layoutAnimTargets = () => [
-  document.querySelector('.ai-input__left'),
+  aiInput.querySelector('.ai-input__left'),
   promptEditor.closest('.ai-input__field-wrap'),
   sendBtn,
 ].filter(Boolean);
 
 let layoutAnimating = false;
+let layoutReady = false;
 
 function contentWrapsToMultipleLines() {
   if (promptEditor.dataset.empty === 'true') return false;
@@ -482,7 +527,7 @@ function animateLayoutChange(nextMultiline) {
     return;
   }
 
-  if (prefersReducedMotion || typeof gsap === 'undefined') {
+  if (!layoutReady || prefersReducedMotion || typeof gsap === 'undefined') {
     setLayoutMode(nextMultiline);
     return;
   }
@@ -493,6 +538,8 @@ function animateLayoutChange(nextMultiline) {
   layoutAnimating = true;
   aiInput.dataset.layoutAnimating = 'true';
   setLayoutMode(nextMultiline);
+  gsap.killTweensOf(aiInput);
+  targets.forEach((el) => gsap.killTweensOf(el));
 
   if (targets.length === 0) {
     layoutAnimating = false;
@@ -540,11 +587,27 @@ function animateLayoutChange(nextMultiline) {
   );
 }
 
-function updateLayoutMode() {
+function updateLayoutMode({ animate = layoutReady } = {}) {
   const shouldMultiline = contentWrapsToMultipleLines();
   const isMultiline = aiInput.dataset.multiline === 'true';
   if (shouldMultiline === isMultiline) return;
+  if (!animate) {
+    setLayoutMode(shouldMultiline);
+    return;
+  }
   animateLayoutChange(shouldMultiline);
+}
+
+function resetAiInputMotionStyles() {
+  if (typeof gsap === 'undefined') return;
+  gsap.set(aiInput, { clearProps: 'opacity,transform,visibility' });
+  layoutAnimTargets().forEach((el) => gsap.set(el, { clearProps: 'transform' }));
+}
+
+function resetPanelMotionStyles() {
+  if (typeof gsap === 'undefined') return;
+  const controlsPanel = document.getElementById('controls-panel');
+  if (controlsPanel) gsap.set(controlsPanel, { clearProps: 'opacity,transform,visibility' });
 }
 
 function saveEditorCaret() {
@@ -876,7 +939,7 @@ function appendSnapshotNode(parent, snapshotNode, { interactive = false } = {}) 
 
 function appendSentBubble(snapshot) {
   const bubble = document.createElement('div');
-  bubble.className = 'ai-sent-bubble';
+  bubble.className = 'ai-sent-bubble perso-xxl-chat-bubble perso-xxl-chat-bubble--user';
   if (snapshot.nodes?.length) {
     snapshot.nodes.forEach((node) => appendSnapshotNode(bubble, node));
   } else {
@@ -1131,6 +1194,10 @@ attachMenu.addEventListener('click', (e) => {
   const item = e.target.closest('[data-action]');
   if (!item) return;
   const action = item.dataset.action;
+  if (action === 'dashboard') {
+    openDashboard();
+    return;
+  }
   if (action === 'image') imageInput.click();
   if (action === 'pick') handlePickAction();
 });
@@ -1276,19 +1343,60 @@ copyBtn.addEventListener('click', async () => {
 if (resetBtn) resetBtn.addEventListener('click', resetControls);
 if (controlSearch) controlSearch.addEventListener('input', () => filterControls(controlSearch.value));
 
+function seedPlaygroundComposer() {
+  if (!isPlayground || !promptEditor) return;
+  promptEditor.innerHTML = 'remove this and all other adds ';
+  const tokens = [
+    { type: 'pick', label: 'a.ytLockupViewModelContentImage' },
+    { type: 'pick', label: 'feed-ad-metadata-view-model' },
+  ];
+  tokens.forEach((stored) => {
+    const tokenId = `demo_${++tokenCounter}`;
+    tokenStore.set(tokenId, stored);
+    const token = document.createElement('span');
+    token.className = `ai-input__token${stored.type === 'pick' ? ' ai-input__token--pick' : ''}`;
+    token.contentEditable = 'false';
+    token.dataset.tokenId = tokenId;
+    token.dataset.tokenType = stored.type;
+    const labelEl = document.createElement('span');
+    labelEl.className = 'ai-input__token-label';
+    labelEl.textContent = stored.label;
+    token.appendChild(labelEl);
+    promptEditor.appendChild(document.createTextNode(' '));
+    promptEditor.appendChild(token);
+  });
+  syncEditorEmptyState();
+  updateLayoutMode();
+  updateSendState();
+}
+
 /* ── Init ── */
 if (isPlayground) {
   buildControls();
   updateExport();
+  seedPlaygroundComposer();
 }
 syncEditorEmptyState();
-updateLayoutMode();
+updateLayoutMode({ animate: false });
 updateSendState();
+resetAiInputMotionStyles();
+resetPanelMotionStyles();
 
-new ResizeObserver(() => updateLayoutMode()).observe(aiInput);
+new ResizeObserver(() => {
+  if (!layoutReady) return;
+  updateLayoutMode();
+}).observe(aiInput);
 
-if (!prefersReducedMotion) {
-  if (isPlayground) {
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    layoutReady = true;
+    updateLayoutMode({ animate: false });
+    resetAiInputMotionStyles();
+    resetPanelMotionStyles();
+  });
+});
+
+if (!prefersReducedMotion && isPlayground && typeof gsap !== 'undefined') {
   gsap.from('.stage-eyebrow, .stage-title, .stage-desc', {
     y: 24,
     opacity: 0,
@@ -1296,25 +1404,6 @@ if (!prefersReducedMotion) {
     stagger: 0.1,
     ease: 'power3.out',
   });
-
-  gsap.from('.panel', {
-    x: 40,
-    opacity: 0,
-    duration: 0.7,
-    delay: 0.15,
-    ease: 'power3.out',
-  });
-  }
-
-  if (isPlayground) {
-    gsap.from('.ai-input', {
-      y: 30,
-      opacity: 0,
-      duration: 0.85,
-      delay: 0.25,
-      ease: 'back.out(1.2)',
-    });
-  }
 }
 
 } /* end aiInput guard */

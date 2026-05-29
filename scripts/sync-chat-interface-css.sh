@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Regenerate content/ai-input.css from ai-input/component.css (scoped to #perso-xxl-panel).
+# Regenerate content/chat-interface.css from chat-interface/component.css (scoped to #perso-xxl-panel).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/ai-input/component.css"
-OUT="$ROOT/content/ai-input.css"
+SRC="$ROOT/chat-interface/component.css"
+OUT="$ROOT/content/chat-interface.css"
 
 python3 - "$SRC" "$OUT" <<'PY'
 import re
@@ -90,8 +90,8 @@ def transform(text: str) -> str:
     return "".join(out)
 
 header = (
-    "/* AUTO-GENERATED from ai-input/component.css — edit that file, then run:\n"
-    "   bash scripts/sync-ai-input-css.sh */\n\n"
+    "/* AUTO-GENERATED from chat-interface/component.css — edit that file, then run:\n"
+    "   bash scripts/sync-chat-interface-css.sh */\n\n"
 )
 open(out_path, "w", encoding="utf-8").write(header + transform(text).rstrip() + "\n")
 print(f"Wrote {out_path}")

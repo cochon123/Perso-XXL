@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chewy&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="ai-input/component.css" />
-  <link rel="stylesheet" href="ai-input/embedded.css" />
+  <link rel="stylesheet" href="../chat-interface/component.css" />
+  <link rel="stylesheet" href="../chat-interface/embedded.css" />
   <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
@@ -216,6 +216,20 @@
                 </button>
 
                 <div class="ai-input__menu" id="attach-menu" role="menu" hidden>
+                  <button type="button" class="ai-input__menu-item" role="menuitem" data-action="dashboard">
+                    <span class="ai-input__menu-icon">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="3" y="3" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                        <rect x="13" y="3" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                        <rect x="3" y="13" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                        <rect x="13" y="13" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                      </svg>
+                    </span>
+                    <span class="ai-input__menu-text">
+                      <strong>Dashboard</strong>
+                      <small>Manage modifications</small>
+                    </span>
+                  </button>
                   <button type="button" class="ai-input__menu-item" role="menuitem" data-action="image">
                     <span class="ai-input__menu-icon">
                       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -338,6 +352,6 @@
   <script src="demo.js"></script>
   <script src="main.js?v=4"></script>
   <script src="hero-floats.js"></script>
-  <script src="ai-input/main.js"></script>
+  <script src="../chat-interface/main.js"></script>
 </body>
 </html>

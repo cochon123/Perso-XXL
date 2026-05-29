@@ -1,5 +1,5 @@
 /**
- * Perso XXL — Prompt bar matching the ai-input playground (no GSAP, extension context).
+ * Perso XXL — Prompt bar matching the chat-interface playground (no GSAP, extension context).
  */
 (function () {
   const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

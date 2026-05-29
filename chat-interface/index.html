@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Perso XXL — AI Input Playground</title>
+  <title>Perso XXL — Chat Interface Playground</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chewy&display=swap" rel="stylesheet" />
@@ -20,21 +20,34 @@
 
   <header class="topbar">
     <a href="../landing/index.html" class="brand">Perso<span>XXL</span></a>
-    <span class="topbar-label">AI Input Playground</span>
+    <span class="topbar-label">Chat Interface Playground</span>
   </header>
 
   <div class="layout">
     <main class="stage">
       <div class="stage-inner">
         <p class="stage-eyebrow">Live preview</p>
-        <h1 class="stage-title">Design your prompt bar</h1>
-        <p class="stage-desc">Tweak every detail in the panel, then copy the config into the extension.</p>
+        <h1 class="stage-title">Design your chat interface</h1>
+        <p class="stage-desc">Customize the chat history and composer — then sync styles into the extension.</p>
 
         <div class="preview-wrap">
           <div class="preview-glow" aria-hidden="true"></div>
 
           <div class="preview-stack" id="preview-stack">
-            <div class="ai-sent-list" id="sent-list" aria-live="polite"></div>
+            <div class="ai-sent-list" id="sent-list" aria-live="polite">
+              <div class="ai-sent-bubble perso-xxl-chat-bubble perso-xxl-chat-bubble--user">
+                remove these <span class="ai-input__token ai-input__token--pick" contenteditable="false"><span class="ai-input__token-label">img.ytCoreImageHost</span></span>
+              </div>
+              <div class="ai-sent-bubble perso-xxl-chat-bubble perso-xxl-chat-bubble--assistant">
+                Created modification: remove these
+              </div>
+              <div class="ai-sent-bubble perso-xxl-chat-bubble perso-xxl-chat-bubble--user">
+                remove all those adds <span class="ai-input__token ai-input__token--pick" contenteditable="false"><span class="ai-input__token-label">a.ytLockupViewModelContentImage</span></span>
+              </div>
+              <div class="ai-sent-bubble perso-xxl-chat-bubble perso-xxl-chat-bubble--assistant">
+                Created modification: remove all those adds
+              </div>
+            </div>
 
             <div class="ai-input" id="ai-input" data-state="idle" data-multiline="false">
               <div class="ai-input__body">
@@ -59,7 +72,21 @@
                     </span>
                   </button>
 
-                <div class="ai-input__menu" id="attach-menu" role="menu" hidden>
+                  <div class="ai-input__menu" id="attach-menu" role="menu" hidden>
+                  <button type="button" class="ai-input__menu-item" role="menuitem" data-action="dashboard">
+                    <span class="ai-input__menu-icon">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="3" y="3" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                        <rect x="13" y="3" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                        <rect x="3" y="13" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                        <rect x="13" y="13" width="8" height="8" rx="1.75" stroke="currentColor" stroke-width="1.75"/>
+                      </svg>
+                    </span>
+                    <span class="ai-input__menu-text">
+                      <strong>Dashboard</strong>
+                      <small>Manage modifications</small>
+                    </span>
+                  </button>
                   <button type="button" class="ai-input__menu-item" role="menuitem" data-action="image">
                     <span class="ai-input__menu-icon">
                       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -85,12 +112,12 @@
                       <small>Select an element</small>
                     </span>
                   </button>
+                  </div>
+
+                  <input type="file" id="image-input" accept="image/*" hidden />
                 </div>
 
-                <input type="file" id="image-input" accept="image/*" hidden />
-              </div>
-
-              <div class="ai-input__field-wrap">
+                <div class="ai-input__field-wrap">
                 <div
                   class="ai-input__editor"
                   id="prompt-editor"
@@ -133,7 +160,6 @@
                 </span>
               </button>
             </div>
-          </div>
           </div>
         </div>
       </div>

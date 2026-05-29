@@ -4,28 +4,44 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Perso XXL Dashboard</title>
+    <link rel="icon" href="../landing/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chewy&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="dashboard-bg" aria-hidden="true">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+
+    <nav class="dashboard-nav" aria-label="Dashboard">
+      <div class="nav-logo">
+        <img src="../landing/favicon.svg" width="36" height="36" alt="" class="nav-logo-mark">
+        <span class="nav-logo-text">Perso<span>XXL</span></span>
+      </div>
+      <button type="button" id="refresh-btn" class="btn btn-primary btn-sm">Refresh</button>
+    </nav>
+
     <main class="dashboard-shell">
       <header class="dashboard-header">
-        <div>
-          <p class="eyebrow">Perso XXL</p>
-          <h1>Dashboard</h1>
-        </div>
-        <button type="button" id="refresh-btn">Refresh</button>
+        <p class="dashboard-eyebrow">Your modifications</p>
+        <h1>Dashboard</h1>
       </header>
 
       <section class="summary-grid" aria-label="Summary">
-        <div>
+        <div class="summary-card">
           <span id="site-count">0</span>
           <p>Modified pages</p>
         </div>
-        <div>
+        <div class="summary-card">
           <span id="mod-count">0</span>
           <p>Total modifications</p>
         </div>
-        <div>
+        <div class="summary-card">
           <span id="active-count">0</span>
           <p>Active modifications</p>
         </div>
@@ -39,6 +55,7 @@
       <p id="empty-state" class="empty-state" hidden>No modified pages yet.</p>
     </main>
 
+    <script src="mock-data.js"></script>
     <script src="main.js"></script>
   </body>
 </html>

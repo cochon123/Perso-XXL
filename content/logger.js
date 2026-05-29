@@ -1,6 +1,7 @@
 window.PersoLogger = (() => {
   const ENDPOINT = "http://localhost:8787/log";
-  const enabled = window.PersoEnv?.DEV_LOGS !== false;
+  const enabled = window.PersoEnv?.DEV_LOGS === true;
+  let remoteAvailable = enabled ? null : false;
 
   function debug(event, data = {}) {
     write("debug", event, data);
@@ -34,15 +35,18 @@ window.PersoLogger = (() => {
     const consoleMethod = level === "error" ? "error" : level === "warn" ? "warn" : "log";
     console[consoleMethod]("[Perso XXL]", event, entry.data);
 
-    if (!enabled) return;
+    if (!enabled || remoteAvailable === false) return;
 
     fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry),
       keepalive: true
+    }).then((response) => {
+      remoteAvailable = response.ok;
     }).catch(() => {
-      // The terminal logger is optional during extension development.
+      // Log server is optional — stop retrying after the first failed attempt.
+      remoteAvailable = false;
     });
   }
 

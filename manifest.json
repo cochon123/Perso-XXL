@@ -29,6 +29,12 @@
       "description": "Open Perso XXL command palette"
     }
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["chat-interface/fonts/Chewy-Regular.ttf"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
@@ -42,9 +48,9 @@
         "content/ai-client.js",
         "content/vendor/gsap.min.js",
         "content/content.js",
-        "ai-input/main.js"
+        "chat-interface/main.js"
       ],
-      "css": ["content/base.css", "content/ai-input.css", "ai-input/embedded.css"],
+      "css": ["content/base.css", "content/chat-interface.css", "chat-interface/embedded.css"],
       "run_at": "document_idle"
     }
   ]

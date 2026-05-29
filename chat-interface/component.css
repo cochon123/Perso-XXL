@@ -40,15 +40,27 @@
   --ai-revert-stroke: 0.3;
   --ai-revert-x: 0;
   --ai-revert-y: -0.5;
+
+  --ci-stack-gap: 10;
+  --ci-bubble-gap: 8;
+  --ci-bubble-padding-x: 14;
+  --ci-bubble-padding-y: 10;
+  --ci-bubble-user-bg: #2a111e;
+  --ci-bubble-user-border: rgba(255, 45, 122, 0.36);
+  --ci-bubble-assistant-bg: rgba(255, 255, 255, 0.08);
+  --ci-bubble-assistant-border: rgba(255, 255, 255, 0.1);
+  --ci-bubble-assistant-text: rgba(250, 248, 249, 0.82);
 }
 
 .preview-stack {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: calc(var(--ci-stack-gap) * 1px);
   width: min(calc(var(--ai-width) * 1px), 100%);
   max-width: 100%;
+  max-height: min(calc(100svh - 48px), 720px);
+  min-height: 0;
 }
 
 .preview-stack .ai-input {
@@ -56,28 +68,42 @@
   max-width: 100%;
   margin-left: 0;
   margin-right: 0;
+  flex-shrink: 0;
 }
 
 .ai-sent-list {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: calc(var(--ci-bubble-gap) * 1px);
   width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .ai-sent-bubble {
   align-self: flex-end;
   max-width: 100%;
-  padding: 10px 14px;
+  padding: calc(var(--ci-bubble-padding-y) * 1px) calc(var(--ci-bubble-padding-x) * 1px);
   border-radius: calc(var(--ai-radius) * 1px);
-  border: 1px solid rgba(255, 45, 122, 0.36);
-  background: #2a111e;
+  border: 1px solid var(--ci-bubble-user-border);
+  background: var(--ci-bubble-user-bg);
   color: var(--ai-text);
+  font-family: Inter, Arial, system-ui, sans-serif;
   font-size: calc(var(--ai-font-size) * 1px);
   line-height: 1.45;
+  letter-spacing: 0;
   text-align: left;
   word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.perso-xxl-chat-bubble--assistant {
+  align-self: flex-start;
+  border-color: var(--ci-bubble-assistant-border);
+  background: var(--ci-bubble-assistant-bg);
+  color: var(--ci-bubble-assistant-text);
 }
 
 .ai-sent-bubble .ai-input__token {

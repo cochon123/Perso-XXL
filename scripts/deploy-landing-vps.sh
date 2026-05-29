@@ -11,13 +11,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VPS="${VPS:?Set VPS=user@host}"
 REMOTE_DIR="${REMOTE_DIR:-/var/www/persoxxl}"
 
-echo "==> Sync landing + ai-input -> ${VPS}:${REMOTE_DIR}"
+echo "==> Sync landing + chat-interface -> ${VPS}:${REMOTE_DIR}"
 rsync -avz --delete \
   --exclude '.DS_Store' \
   "${ROOT}/landing/" "${VPS}:${REMOTE_DIR}/landing/"
 rsync -avz --delete \
   --exclude '.DS_Store' \
-  "${ROOT}/ai-input/" "${VPS}:${REMOTE_DIR}/ai-input/"
+  "${ROOT}/chat-interface/" "${VPS}:${REMOTE_DIR}/chat-interface/"
 
 echo "==> Ensure config/env.js (OpenRouter demo optional)"
 ssh "${VPS}" bash -s <<REMOTE

@@ -694,6 +694,10 @@ a { color: inherit; text-decoration: none; }
   min-width: 0;
 }
 
+.productivity-toast:empty {
+  display: none;
+}
+
 .productivity-toast {
   position: fixed;
   bottom: 1.5rem;
