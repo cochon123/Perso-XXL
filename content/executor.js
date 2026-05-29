@@ -4,8 +4,12 @@ window.PersoExecutor = (() => {
   const RULE_STYLE_ID = "perso-xxl-css-rules";
   const TARGET_STYLE_ID = "perso-xxl-target-rules";
   const CAPABILITY_STYLE_ID = "perso-xxl-capability-rules";
+  const SHORTCUT_STYLE_ID = "perso-xxl-shortcut-rules";
   const APPLIED_ATTR = "data-perso-xxl-rule";
+  const SHORTCUT_ATTR = "data-perso-xxl-shortcut";
+  const MOVED_ATTR = "data-perso-xxl-moved";
   const originalState = new WeakMap();
+  const originalPositions = new WeakMap();
 
   function applyPlan(plan) {
     if (!plan) return { totalMatched: 0 };
@@ -18,6 +22,7 @@ window.PersoExecutor = (() => {
 
     document.documentElement.setAttribute("data-perso-xxl-enabled", "true");
     injectTheme(plan.theme || {});
+    clearShortcutButtons();
     clearAppliedState();
 
     const cssRules = [];
@@ -56,6 +61,8 @@ window.PersoExecutor = (() => {
     document.getElementById(RULE_STYLE_ID)?.remove();
     document.getElementById(TARGET_STYLE_ID)?.remove();
     document.getElementById(CAPABILITY_STYLE_ID)?.remove();
+    document.getElementById(SHORTCUT_STYLE_ID)?.remove();
+    clearShortcutButtons();
     document.documentElement.removeAttribute("data-perso-xxl-enabled");
     document.documentElement.removeAttribute("data-perso-xxl-scroll-locked");
 
@@ -157,6 +164,14 @@ window.PersoExecutor = (() => {
   }
 
   function applyCapabilityRule(rule, plan) {
+    if (rule.capability === "shortcutButton") {
+      return applyShortcutButtonCapability(rule, plan);
+    }
+
+    if (rule.capability === "moveElement") {
+      return applyMoveElementCapability(rule, plan);
+    }
+
     if (rule.capability !== "scrollLock") {
       log.warn("executor.capability.unsupported", { ruleId: rule.id, capability: rule.capability });
       return 0;
@@ -205,10 +220,132 @@ window.PersoExecutor = (() => {
     return Math.max(1, elements.length || preserveElements.length);
   }
 
+  function applyShortcutButtonCapability(rule, plan) {
+    const placementElements = resolveRuleElements(rule, plan);
+    const sourceElements = resolveTargetElements(plan.targetMap?.[rule.sourceActionTargetRef]);
+    const placement = placementElements[0] || document.querySelector("header, nav, [role='toolbar'], main") || document.body;
+    const source = sourceElements[0];
+
+    if (!placement || !source) {
+      log.warn("executor.capability.shortcut_button.missing_target", {
+        ruleId: rule.id,
+        placementCount: placementElements.length,
+        sourceCount: sourceElements.length
+      });
+      return 0;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute(SHORTCUT_ATTR, rule.id || "shortcut");
+    button.setAttribute("data-perso-xxl-rule", rule.id || "shortcut");
+    button.className = "perso-xxl-shortcut-button";
+    button.textContent = sanitizeShortcutLabel(rule.label || source.getAttribute("aria-label") || source.textContent || "Shortcut");
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      source.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+    });
+
+    if (rule.placement === "prepend") {
+      placement.insertBefore(button, placement.firstChild);
+    } else {
+      placement.appendChild(button);
+    }
+
+    rememberElement(placement);
+    mark(placement, rule.id);
+    injectShortcutCss();
+
+    log.info("executor.capability.shortcut_button", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      sourceActionTargetRef: rule.sourceActionTargetRef
+    });
+
+    return 1;
+  }
+
+  function applyMoveElementCapability(rule, plan) {
+    const elements = resolveRuleElements(rule, plan);
+    const destinations = resolveTargetElements(plan.targetMap?.[rule.placementTargetRef]);
+    const destination = destinations[0];
+    if (!elements.length || !destination) {
+      log.warn("executor.capability.move_element.missing_target", {
+        ruleId: rule.id,
+        elementCount: elements.length,
+        destinationCount: destinations.length
+      });
+      return 0;
+    }
+
+    for (const element of elements) {
+      if (element === destination || element.contains(destination)) continue;
+      rememberElement(element);
+      rememberPosition(element);
+      mark(element, rule.id);
+      element.setAttribute(MOVED_ATTR, "true");
+      if (rule.placement === "prepend") {
+        destination.insertBefore(element, destination.firstChild);
+      } else {
+        destination.appendChild(element);
+      }
+    }
+
+    log.info("executor.capability.move_element", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      placementTargetRef: rule.placementTargetRef,
+      movedCount: elements.length
+    });
+
+    return elements.length;
+  }
+
+  function injectShortcutCss() {
+    const css = `
+      .perso-xxl-shortcut-button {
+        appearance: none !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-height: 32px !important;
+        margin: 4px !important;
+        padding: 6px 12px !important;
+        border: 1px solid rgba(255, 45, 122, 0.35) !important;
+        border-radius: 8px !important;
+        background: rgba(22, 14, 20, 0.88) !important;
+        color: #fff !important;
+        font: 600 13px/1.2 Inter, Arial, system-ui, sans-serif !important;
+        cursor: pointer !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22) !important;
+        z-index: 2 !important;
+      }
+
+      .perso-xxl-shortcut-button:hover {
+        background: rgba(255, 45, 122, 0.88) !important;
+      }
+    `;
+    upsertStyle(SHORTCUT_STYLE_ID, css);
+  }
+
+  function sanitizeShortcutLabel(value) {
+    return String(value || "Shortcut").replace(/\s+/g, " ").trim().slice(0, 32) || "Shortcut";
+  }
+
   function clearAppliedState() {
     document.querySelectorAll(`[${APPLIED_ATTR}]`).forEach((element) => {
+      if (element.hasAttribute(MOVED_ATTR)) return;
       element.removeAttribute(APPLIED_ATTR);
     });
+  }
+
+  function clearShortcutButtons() {
+    document.querySelectorAll(`[${SHORTCUT_ATTR}]`).forEach((element) => element.remove());
   }
 
   function rememberElement(element) {
@@ -217,6 +354,14 @@ window.PersoExecutor = (() => {
     originalState.set(element, {
       style: element.getAttribute("style"),
       attributes: collectStoredAttributes(element)
+    });
+  }
+
+  function rememberPosition(element) {
+    if (originalPositions.has(element)) return;
+    originalPositions.set(element, {
+      parent: element.parentNode,
+      nextSibling: element.nextSibling
     });
   }
 
@@ -231,6 +376,14 @@ window.PersoExecutor = (() => {
 
   function restoreElement(element) {
     const original = originalState.get(element);
+    const originalPosition = originalPositions.get(element);
+
+    if (originalPosition?.parent?.isConnected && element.parentNode !== originalPosition.parent) {
+      originalPosition.parent.insertBefore(
+        element,
+        originalPosition.nextSibling?.parentNode === originalPosition.parent ? originalPosition.nextSibling : null
+      );
+    }
 
     if (original?.style === null) {
       element.removeAttribute("style");
@@ -250,7 +403,9 @@ window.PersoExecutor = (() => {
     }
 
     element.removeAttribute(APPLIED_ATTR);
+    element.removeAttribute(MOVED_ATTR);
     originalState.delete(element);
+    originalPositions.delete(element);
   }
 
   function mark(element, ruleId) {
@@ -310,6 +465,11 @@ window.PersoExecutor = (() => {
 
   function resolveRuleElements(rule, plan) {
     const selectors = resolveTargetSelectors(plan.targetMap?.[rule.targetRef]);
+    return uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
+  }
+
+  function resolveTargetElements(target) {
+    const selectors = resolveTargetSelectors(target);
     return uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
   }
 

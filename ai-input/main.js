@@ -617,6 +617,32 @@ function insertAtCaret(node) {
   placeCaretAfter(node);
 }
 
+function insertTextAtCaret(text) {
+  promptEditor.focus();
+
+  const sel = window.getSelection();
+  const hasValidCaret = sel?.rangeCount
+    && promptEditor.contains(sel.getRangeAt(0).commonAncestorContainer);
+
+  if (!hasValidCaret) {
+    promptEditor.appendChild(document.createTextNode(text));
+    queueEditorStateSync();
+    return;
+  }
+
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+
+  const textNode = document.createTextNode(text);
+  range.insertNode(textNode);
+  range.setStart(textNode, textNode.length);
+  range.collapse(true);
+
+  sel.removeAllRanges();
+  sel.addRange(range);
+  queueEditorStateSync();
+}
+
 function createTokenElement({ type, label, url, element = null, file = null }) {
   tokenCounter += 1;
   const id = `token_${tokenCounter}`;
@@ -796,16 +822,66 @@ function handleImageSelect(file) {
 }
 
 function captureEditorSnapshot() {
+  const nodes = [];
+  promptEditor.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      nodes.push({ type: 'text', text: node.textContent || '' });
+      return;
+    }
+    if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('ai-input__token')) {
+      const stored = tokenStore.get(node.dataset.tokenId);
+      if (stored) {
+        nodes.push({
+          type: 'token',
+          tokenId: node.dataset.tokenId,
+          stored: { ...stored },
+        });
+      }
+    }
+  });
+
   return {
-    html: promptEditor.innerHTML,
+    nodes,
     text: serializeEditor(),
   };
+}
+
+function appendSnapshotNode(parent, snapshotNode, { interactive = false } = {}) {
+  if (snapshotNode.type === 'text') {
+    parent.appendChild(document.createTextNode(snapshotNode.text || ''));
+    return;
+  }
+
+  if (snapshotNode.type !== 'token' || !snapshotNode.stored) return;
+
+  const token = document.createElement('span');
+  token.className = `ai-input__token${snapshotNode.stored.type === 'pick' ? ' ai-input__token--pick' : ''}`;
+  token.contentEditable = 'false';
+  token.dataset.tokenType = snapshotNode.stored.type;
+  if (interactive && snapshotNode.tokenId) token.dataset.tokenId = snapshotNode.tokenId;
+
+  if (snapshotNode.stored.type === 'image' && snapshotNode.stored.url) {
+    const img = document.createElement('img');
+    img.src = snapshotNode.stored.url;
+    img.alt = '';
+    token.appendChild(img);
+  }
+
+  const labelEl = document.createElement('span');
+  labelEl.className = 'ai-input__token-label';
+  labelEl.textContent = snapshotNode.stored.label || '';
+  token.appendChild(labelEl);
+  parent.appendChild(token);
 }
 
 function appendSentBubble(snapshot) {
   const bubble = document.createElement('div');
   bubble.className = 'ai-sent-bubble';
-  bubble.innerHTML = snapshot.html || snapshot.text;
+  if (snapshot.nodes?.length) {
+    snapshot.nodes.forEach((node) => appendSnapshotNode(bubble, node));
+  } else {
+    bubble.textContent = snapshot.text || '';
+  }
   sentList.appendChild(bubble);
 
   if (!prefersReducedMotion) {
@@ -815,6 +891,33 @@ function appendSentBubble(snapshot) {
       { opacity: 1, y: 0, scale: 1, duration: 0.38, ease: 'power2.out' },
     );
   }
+}
+
+function restoreEditorSnapshot(snapshot, tokens = []) {
+  const tokenMap = new Map(tokens);
+  clearEditor({ revokeAssets: false });
+
+  if (!snapshot?.nodes?.length) {
+    promptEditor.textContent = snapshot?.text || '';
+    syncEditorEmptyState();
+    updateLayoutMode();
+    updateSendState();
+    return;
+  }
+
+  promptEditor.innerHTML = '';
+  snapshot.nodes.forEach((node) => {
+    if (node.type === 'token' && node.tokenId && tokenMap.has(node.tokenId)) {
+      node.stored = { ...tokenMap.get(node.tokenId) };
+    }
+    appendSnapshotNode(promptEditor, node, { interactive: true });
+    if (node.type === 'token' && node.tokenId && node.stored) {
+      tokenStore.set(node.tokenId, { ...node.stored });
+    }
+  });
+  syncEditorEmptyState();
+  updateLayoutMode();
+  updateSendState();
 }
 
 function setStatusMessage(text, { animate = true, showDots = true } = {}) {
@@ -883,7 +986,7 @@ function enterLoadingState(snapshot, { autoFinish = true } = {}) {
   }
 }
 
-function abortLoadingState(message) {
+function abortLoadingState(message, restorePayload) {
   clearInterval(loadingInterval);
   clearTimeout(loadingFinishTimeout);
   loadingInterval = null;
@@ -899,9 +1002,13 @@ function abortLoadingState(message) {
   inputStatus.hidden = true;
   sentList.innerHTML = '';
   gsap.set(statusLine, { y: 0, opacity: 1 });
-  syncEditorEmptyState();
-  updateLayoutMode();
-  updateSendState();
+  if (restorePayload) {
+    restoreEditorSnapshot(restorePayload.snapshot, restorePayload.tokens);
+  } else {
+    syncEditorEmptyState();
+    updateLayoutMode();
+    updateSendState();
+  }
   showToast(message);
 }
 
@@ -914,7 +1021,11 @@ function finishLoadingSequence() {
 
   const showDone = () => {
     setStatusMessage('Done!', { animate: !prefersReducedMotion, showDots: false });
-    enterDoneState();
+    if (isEmbedded()) {
+      setTimeout(resetComposerAfterSuccess, 650);
+    } else {
+      enterDoneState();
+    }
   };
 
   if (prefersReducedMotion) {
@@ -939,6 +1050,24 @@ function enterDoneState() {
   attachToggle.disabled = true;
   sendBtn.disabled = false;
   sendBtn.setAttribute('aria-label', 'Revert changes');
+}
+
+function resetComposerAfterSuccess() {
+  isLoading = false;
+  isDone = false;
+  aiInput.dataset.state = 'idle';
+  delete aiInput.dataset.statusDone;
+  inputStatus.hidden = true;
+  promptEditor.contentEditable = 'true';
+  attachToggle.disabled = false;
+  attachToggle.setAttribute('aria-label', 'Add attachment');
+  sendBtn.setAttribute('aria-label', 'Send prompt');
+  if (typeof gsap !== 'undefined') gsap.set(statusLine, { y: 0, opacity: 1 });
+  clearEditor();
+  syncEditorEmptyState();
+  updateLayoutMode();
+  updateSendState();
+  promptEditor.focus();
 }
 
 function revertChanges() {
@@ -1087,7 +1216,7 @@ promptEditor.addEventListener('keydown', (e) => {
 promptEditor.addEventListener('paste', (e) => {
   e.preventDefault();
   const text = e.clipboardData?.getData('text/plain').replace(/[\r\n]+/g, ' ') || '';
-  document.execCommand('insertText', false, text);
+  if (text) insertTextAtCaret(text);
 });
 
 sendBtn.addEventListener('click', () => {
@@ -1109,7 +1238,7 @@ sendBtn.addEventListener('click', () => {
     enterLoadingState(snapshot, { autoFinish: false });
     hostApi().onSend({ prompt, tokens })
       .then(() => finishLoadingSequence())
-      .catch((error) => abortLoadingState(error.message || String(error)));
+      .catch((error) => abortLoadingState(error.message || String(error), { snapshot, tokens }));
     return;
   }
 

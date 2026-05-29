@@ -1,6 +1,7 @@
 const log = window.PersoLogger;
 const CONTENT_VERSION = "0.6.0-landing-ai-input";
 let currentPlan = null;
+let currentSiteRecord = null;
 let applyTimer = null;
 /** @type {HTMLElement | null} */
 let panel = null;
@@ -8,6 +9,8 @@ let suppressMutationApplyUntil = 0;
 let zeroMatchRetryCount = 0;
 let selectionCounter = 0;
 const extensionApi = globalThis.browser || globalThis.chrome;
+const SITE_RECORD_PREFIX = "siteRecord:";
+const LEGACY_PLAN_PREFIX = "sitePlan:";
 
 log.info("content.loaded", {
   version: CONTENT_VERSION,
@@ -132,6 +135,16 @@ function createAiInputMarkup() {
   return `
     <div class="perso-xxl-panel-backdrop" aria-hidden="true"></div>
     <div class="preview-stack" id="preview-stack">
+      <div class="perso-xxl-page-manager" id="page-manager" hidden>
+        <div class="perso-xxl-page-manager__head">
+          <div>
+            <strong>Page modifications</strong>
+            <span id="page-manager-count">0 active</span>
+          </div>
+          <button type="button" id="open-dashboard-btn" aria-label="Open dashboard">Dashboard</button>
+        </div>
+        <div class="perso-xxl-mod-list" id="mod-list"></div>
+      </div>
       <div class="ai-sent-list" id="sent-list" aria-live="polite"></div>
 
       <div class="ai-input" id="ai-input" data-state="idle" data-multiline="false">
@@ -242,7 +255,30 @@ function createPanel() {
   root.id = "perso-xxl-panel";
   root.hidden = true;
   root.innerHTML = createAiInputMarkup();
+  attachPageManager(root);
   return root;
+}
+
+function attachPageManager(root) {
+  root.querySelector("#open-dashboard-btn")?.addEventListener("click", () => {
+    try {
+      const result = extensionApi.runtime.sendMessage({ type: "PERSO_OPEN_DASHBOARD" });
+      if (result?.catch) result.catch(() => {});
+    } catch (_error) {}
+  });
+
+  root.querySelector("#mod-list")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-mod-action]");
+    if (!button) return;
+    const id = button.closest("[data-mod-id]")?.dataset.modId;
+    if (!id) return;
+
+    if (button.dataset.modAction === "toggle") {
+      await setModificationEnabled(id, button.getAttribute("aria-pressed") !== "true");
+    } else if (button.dataset.modAction === "delete") {
+      await deleteModification(id);
+    }
+  });
 }
 
 function initExtensionHost() {
@@ -286,8 +322,16 @@ function initExtensionHost() {
 }
 
 async function loadPanelState() {
-  const state = await extensionApi.storage.local.get(["profileNotes", getPlanStorageKey()]);
-  const savedPlan = state[getPlanStorageKey()];
+  const state = await extensionApi.storage.local.get(["profileNotes", getSiteRecordKey(), getLegacyPlanStorageKey()]);
+  const savedPlan = state[getLegacyPlanStorageKey()];
+  currentSiteRecord = normalizeSiteRecord(state[getSiteRecordKey()]);
+
+  if (!state[getSiteRecordKey()] && savedPlan) {
+    currentSiteRecord = migrateLegacyPlan(savedPlan);
+    await saveSiteRecord(currentSiteRecord);
+    await extensionApi.storage.local.remove([getLegacyPlanStorageKey()]);
+  }
+
   const editor = panel?.querySelector("#prompt-editor");
 
   if (editor && state.profileNotes && !editor.textContent.trim()) {
@@ -297,10 +341,12 @@ async function loadPanelState() {
 
   log.info("panel.state.loaded", {
     hasProfileNotes: Boolean(state.profileNotes),
-    hasSavedPlan: Boolean(savedPlan),
-    key: getPlanStorageKey()
+    modificationCount: currentSiteRecord.modifications.length,
+    key: getSiteRecordKey()
   });
 
+  refreshPageManager();
+  refreshConversationPreview();
   editor?.focus?.();
 }
 
@@ -308,11 +354,17 @@ function tokensToSelections(tokens) {
   const selections = [];
 
   for (const [, stored] of tokens) {
-    if (stored.type !== "pick" || !stored.element) continue;
-    selectionCounter += 1;
-    selections.push(
-      window.PersoDomContext.buildSelection(stored.element, `sel_${selectionCounter}`)
-    );
+    if (stored.type !== "pick") continue;
+    if (stored.selection) {
+      selections.push(stored.selection);
+      continue;
+    }
+    if (stored.element) {
+      selectionCounter += 1;
+      selections.push(
+        window.PersoDomContext.buildSelection(stored.element, `sel_${selectionCounter}`)
+      );
+    }
   }
 
   return selections;
@@ -332,6 +384,29 @@ async function resolveUploadedAsset(tokens) {
   }
 
   return null;
+}
+
+async function resolveRemoteImageAsset(prompt) {
+  const url = extractFirstImageUrl(prompt);
+  if (!url) return null;
+
+  const response = await extensionApi.runtime.sendMessage({
+    type: "PERSO_FETCH_IMAGE_ASSET",
+    url
+  });
+
+  if (!response?.ok) {
+    throw new Error(response?.error || "Could not download the image.");
+  }
+
+  return {
+    assetId: "remoteImage",
+    name: response.name || new URL(url).pathname.split("/").filter(Boolean).pop() || "remote-image",
+    type: response.type,
+    size: response.size,
+    dataUrl: response.dataUrl,
+    sourceUrl: url
+  };
 }
 
 function summariesFromUploaded(uploaded) {
@@ -363,9 +438,11 @@ function attachAssetsToPlan(plan, uploaded) {
 async function generateAndApplyPlan({ prompt, tokens }) {
   const selections = tokensToSelections(tokens);
   const uploadedAsset = await resolveUploadedAsset(tokens);
+  const remoteAsset = uploadedAsset ? null : await resolveRemoteImageAsset(prompt);
+  const selectedAsset = uploadedAsset || remoteAsset;
 
   if (!prompt) throw new Error("Type what you want to change first.");
-  if (hasLocalPath(prompt) && !uploadedAsset) {
+  if (hasLocalPath(prompt) && !selectedAsset) {
     throw new Error("Attach the image file instead of typing its local path.");
   }
 
@@ -379,7 +456,7 @@ async function generateAndApplyPlan({ prompt, tokens }) {
     pageNodeCount: pageDom.nodeCount
   });
 
-  const summaries = summariesFromUploaded(uploadedAsset);
+  const summaries = summariesFromUploaded(selectedAsset);
 
   let plan = await window.PersoAiClient.generateTransformPlan({
     prompt,
@@ -388,7 +465,7 @@ async function generateAndApplyPlan({ prompt, tokens }) {
     selections,
     availableAssets: summaries
   });
-  plan = attachAssetsToPlan(plan, uploadedAsset);
+  plan = attachAssetsToPlan(plan, selectedAsset);
 
   log.info("generation.received", {
     site: plan.site,
@@ -410,7 +487,7 @@ async function generateAndApplyPlan({ prompt, tokens }) {
       previousPlan: plan,
       validationErrors: validation.errors
     });
-    plan = attachAssetsToPlan(plan, uploadedAsset);
+    plan = attachAssetsToPlan(plan, selectedAsset);
 
     validation = window.PersoAiClient.validateTransformPlan(plan);
     if (!validation.ok) {
@@ -426,25 +503,54 @@ async function generateAndApplyPlan({ prompt, tokens }) {
 
   log.info("generation.validation.passed");
 
-  currentPlan = plan;
+  const modification = buildModification({ prompt, plan });
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  currentSiteRecord.modifications.push(modification);
+  currentSiteRecord.conversations.push({
+    id: createId("msg"),
+    role: "user",
+    text: prompt,
+    createdAt: new Date().toISOString(),
+    modificationId: modification.id
+  }, {
+    id: createId("msg"),
+    role: "assistant",
+    text: `Created modification: ${modification.title}`,
+    createdAt: new Date().toISOString(),
+    modificationId: modification.id
+  });
+  currentSiteRecord.lastUpdatedAt = new Date().toISOString();
+  currentPlan = composeEnabledPlan(currentSiteRecord);
   zeroMatchRetryCount = 0;
   await extensionApi.storage.local.set({
     profileNotes: prompt,
-    [getPlanStorageKey()]: plan
+    [getSiteRecordKey()]: currentSiteRecord
   });
-  log.info("storage.saved", { key: getPlanStorageKey(), hasProfileNotes: Boolean(prompt), ruleCount: plan.rules?.length || 0 });
+  refreshPageManager();
+  refreshConversationPreview();
+  log.info("storage.saved", { key: getSiteRecordKey(), hasProfileNotes: Boolean(prompt), modificationCount: currentSiteRecord.modifications.length });
   applyCurrentPlan();
   log.info("panel.task.finished", { message: "Plan generated." });
 }
 
 async function revertAppliedPlan() {
   clearTimeout(applyTimer);
-  currentPlan = null;
+  if (currentSiteRecord) {
+    currentSiteRecord.modifications = currentSiteRecord.modifications.map((modification) => ({
+      ...modification,
+      enabled: false,
+      updatedAt: new Date().toISOString()
+    }));
+    currentSiteRecord.lastUpdatedAt = new Date().toISOString();
+    await saveSiteRecord(currentSiteRecord);
+  }
+  currentPlan = composeEnabledPlan(currentSiteRecord);
   zeroMatchRetryCount = 0;
   suppressMutationApplyUntil = Date.now() + 1200;
   window.PersoExecutor.revertPlan();
-  await extensionApi.storage.local.remove([getPlanStorageKey()]);
-  log.info("plan.reverted", { key: getPlanStorageKey() });
+  refreshPageManager();
+  refreshConversationPreview();
+  log.info("plan.reverted", { key: getSiteRecordKey() });
 }
 
 function buildPageContext() {
@@ -460,17 +566,252 @@ function buildPageContext() {
   };
 }
 
-function getPlanStorageKey() {
-  return `sitePlan:${location.hostname}:${location.pathname}`;
+function getSiteKey() {
+  return `${location.hostname}:${location.pathname}`;
+}
+
+function getSiteRecordKey() {
+  return `${SITE_RECORD_PREFIX}${getSiteKey()}`;
+}
+
+function getLegacyPlanStorageKey() {
+  return `${LEGACY_PLAN_PREFIX}${location.hostname}:${location.pathname}`;
 }
 
 async function loadSavedPlan() {
-  const state = await extensionApi.storage.local.get([getPlanStorageKey()]);
-  const savedPlan = state[getPlanStorageKey()];
-  log.info("storage.loaded", { key: getPlanStorageKey(), hasSavedPlan: Boolean(savedPlan) });
-  if (savedPlan) {
-    currentPlan = savedPlan;
+  const state = await extensionApi.storage.local.get([getSiteRecordKey(), getLegacyPlanStorageKey()]);
+  let record = normalizeSiteRecord(state[getSiteRecordKey()]);
+
+  if (!state[getSiteRecordKey()] && state[getLegacyPlanStorageKey()]) {
+    record = migrateLegacyPlan(state[getLegacyPlanStorageKey()]);
+    await saveSiteRecord(record);
+    await extensionApi.storage.local.remove([getLegacyPlanStorageKey()]);
+  }
+
+  currentSiteRecord = record;
+  currentPlan = composeEnabledPlan(currentSiteRecord);
+  log.info("storage.loaded", { key: getSiteRecordKey(), modificationCount: record.modifications.length });
+  refreshPageManager();
+  refreshConversationPreview();
+  if (currentPlan) {
     applyCurrentPlan();
+  }
+}
+
+function normalizeSiteRecord(record) {
+  if (record && typeof record === "object" && Array.isArray(record.modifications)) {
+    return {
+      version: 1,
+      site: record.site || buildPageContext(),
+      conversations: Array.isArray(record.conversations) ? record.conversations : [],
+      modifications: record.modifications.map(normalizeModification).filter(Boolean),
+      createdAt: record.createdAt || new Date().toISOString(),
+      lastUpdatedAt: record.lastUpdatedAt || record.updatedAt || new Date().toISOString()
+    };
+  }
+
+  return {
+    version: 1,
+    site: buildPageContext(),
+    conversations: [],
+    modifications: [],
+    createdAt: new Date().toISOString(),
+    lastUpdatedAt: new Date().toISOString()
+  };
+}
+
+function normalizeModification(modification) {
+  if (!modification?.plan) return null;
+  return {
+    id: modification.id || createId("mod"),
+    title: modification.title || titleFromPrompt(modification.sourcePrompt || modification.plan.sourcePrompt || "Modification"),
+    enabled: modification.enabled !== false,
+    sourcePrompt: modification.sourcePrompt || modification.plan.sourcePrompt || "",
+    plan: modification.plan,
+    status: modification.status || "unknown",
+    createdAt: modification.createdAt || new Date().toISOString(),
+    updatedAt: modification.updatedAt || modification.createdAt || new Date().toISOString()
+  };
+}
+
+function migrateLegacyPlan(plan) {
+  const record = normalizeSiteRecord(null);
+  record.modifications.push(buildModification({
+    prompt: plan.sourcePrompt || "Legacy modification",
+    plan,
+    title: "Imported modification"
+  }));
+  record.conversations.push({
+    id: createId("msg"),
+    role: "assistant",
+    text: "Imported the previous one-shot plan as a managed modification.",
+    createdAt: new Date().toISOString(),
+    modificationId: record.modifications[0].id
+  });
+  return record;
+}
+
+function buildModification({ prompt, plan, title }) {
+  const now = new Date().toISOString();
+  return {
+    id: createId("mod"),
+    title: title || titleFromPrompt(prompt),
+    enabled: true,
+    sourcePrompt: prompt,
+    plan,
+    status: "unknown",
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function composeEnabledPlan(record) {
+  const enabled = normalizeSiteRecord(record).modifications.filter((modification) => modification.enabled);
+  if (!enabled.length) return null;
+
+  const composed = {
+    version: "2.1",
+    site: buildPageContext(),
+    sourcePrompt: enabled.map((modification) => modification.sourcePrompt).filter(Boolean).join("\n"),
+    selections: [],
+    targetMap: {},
+    rules: [],
+    assets: {}
+  };
+
+  enabled.forEach((modification, index) => {
+    const prefix = `m${index}_${modification.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+    const targetRefs = new Map();
+    Object.entries(modification.plan.targetMap || {}).forEach(([key, target]) => {
+      const ref = `${prefix}_${key}`;
+      targetRefs.set(key, ref);
+      composed.targetMap[ref] = target;
+    });
+    Object.entries(modification.plan.assets || {}).forEach(([key, asset]) => {
+      composed.assets[`${prefix}_${key}`] = asset;
+    });
+    composed.rules.push(...(modification.plan.rules || []).map((rule, ruleIndex) => {
+      const nextRule = {
+        ...rule,
+        id: `${prefix}_${rule.id || `rule_${ruleIndex}`}`,
+        targetRef: rule.targetRef ? targetRefs.get(rule.targetRef) || rule.targetRef : rule.targetRef
+      };
+      if (rule.sourceActionTargetRef) {
+        nextRule.sourceActionTargetRef = targetRefs.get(rule.sourceActionTargetRef) || rule.sourceActionTargetRef;
+      }
+      if (rule.placementTargetRef) {
+        nextRule.placementTargetRef = targetRefs.get(rule.placementTargetRef) || rule.placementTargetRef;
+      }
+      if (nextRule.styles?.backgroundImage?.startsWith?.("asset:")) {
+        const assetId = nextRule.styles.backgroundImage.slice("asset:".length);
+        nextRule.styles = {
+          ...nextRule.styles,
+          backgroundImage: `asset:${prefix}_${assetId}`
+        };
+      }
+      return nextRule;
+    }));
+  });
+
+  return composed;
+}
+
+async function saveSiteRecord(record) {
+  currentSiteRecord = normalizeSiteRecord(record);
+  await extensionApi.storage.local.set({ [getSiteRecordKey()]: currentSiteRecord });
+}
+
+async function setModificationEnabled(id, enabled) {
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  currentSiteRecord.modifications = currentSiteRecord.modifications.map((modification) => (
+    modification.id === id
+      ? { ...modification, enabled, updatedAt: new Date().toISOString() }
+      : modification
+  ));
+  currentSiteRecord.lastUpdatedAt = new Date().toISOString();
+  await saveSiteRecord(currentSiteRecord);
+  currentPlan = composeEnabledPlan(currentSiteRecord);
+  refreshPageManager();
+  refreshConversationPreview();
+  suppressMutationApplyUntil = Date.now() + 1200;
+  window.PersoExecutor.revertPlan();
+  applyCurrentPlan();
+}
+
+async function deleteModification(id) {
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  currentSiteRecord.modifications = currentSiteRecord.modifications.filter((modification) => modification.id !== id);
+  currentSiteRecord.lastUpdatedAt = new Date().toISOString();
+  await saveSiteRecord(currentSiteRecord);
+  currentPlan = composeEnabledPlan(currentSiteRecord);
+  refreshPageManager();
+  refreshConversationPreview();
+  suppressMutationApplyUntil = Date.now() + 1200;
+  window.PersoExecutor.revertPlan();
+  applyCurrentPlan();
+}
+
+function refreshPageManager() {
+  if (!panel) return;
+  const manager = panel.querySelector("#page-manager");
+  const list = panel.querySelector("#mod-list");
+  const count = panel.querySelector("#page-manager-count");
+  const record = normalizeSiteRecord(currentSiteRecord);
+  const modifications = record.modifications;
+  manager.hidden = modifications.length === 0;
+  if (count) {
+    const active = modifications.filter((modification) => modification.enabled).length;
+    count.textContent = `${active}/${modifications.length} active`;
+  }
+  if (!list) return;
+  list.innerHTML = modifications.map((modification) => `
+    <div class="perso-xxl-mod-item" data-mod-id="${escapeHtml(modification.id)}">
+      <div class="perso-xxl-mod-item__text">
+        <strong>${escapeHtml(modification.title)}</strong>
+        <span>${escapeHtml(modification.sourcePrompt || "")}</span>
+      </div>
+      <div class="perso-xxl-mod-item__actions">
+        <button type="button" data-mod-action="toggle" aria-pressed="${modification.enabled ? "true" : "false"}">
+          ${modification.enabled ? "On" : "Off"}
+        </button>
+        <button type="button" data-mod-action="delete">Remove</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function refreshConversationPreview() {
+  if (!panel) return;
+  const sentList = panel.querySelector("#sent-list");
+  if (!sentList) return;
+  const conversations = normalizeSiteRecord(currentSiteRecord).conversations.slice(-8);
+  if (!conversations.length) return;
+
+  sentList.innerHTML = conversations.map((message) => `
+    <div class="ai-sent-bubble perso-xxl-chat-bubble perso-xxl-chat-bubble--${message.role === "assistant" ? "assistant" : "user"}">
+      ${escapeHtml(message.text)}
+    </div>
+  `).join("");
+}
+
+function titleFromPrompt(prompt) {
+  const text = String(prompt || "Modification").replace(/\[[^\]]+\]/g, "").trim();
+  return text.length > 56 ? `${text.slice(0, 53)}...` : text || "Modification";
+}
+
+function createId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function extractFirstImageUrl(value) {
+  const match = String(value || "").match(/https?:\/\/[^\s)'"<>]+/i);
+  if (!match) return null;
+  try {
+    const url = new URL(match[0]);
+    if (!/^https?:$/.test(url.protocol)) return null;
+    return url.href;
+  } catch {
+    return null;
   }
 }
 
@@ -486,6 +827,25 @@ function readFileAsDataUrl(file) {
 function hasLocalPath(value) {
   return /(^|\s)(\/home\/|\/Users\/|[A-Za-z]:\\)/.test(value);
 }
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+extensionApi.storage.onChanged?.addListener((changes, area) => {
+  if (area !== "local" || !changes[getSiteRecordKey()]) return;
+  currentSiteRecord = normalizeSiteRecord(changes[getSiteRecordKey()].newValue);
+  currentPlan = composeEnabledPlan(currentSiteRecord);
+  refreshPageManager();
+  refreshConversationPreview();
+  suppressMutationApplyUntil = Date.now() + 1200;
+  window.PersoExecutor.revertPlan();
+  applyCurrentPlan();
+});
 
 initExtensionHost();
 panel = createPanel();

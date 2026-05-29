@@ -93,4 +93,19 @@ function validateRule(rule, index, errors, targetRefs) {
   if (rule.type === "capability" && !ALLOWED_CAPABILITIES.has(rule.capability)) {
     errors.push(`Rule ${index} has unsupported capability ${rule.capability}.`);
   }
+
+  if (rule.type === "capability" && rule.capability === "shortcutButton") {
+    if (!rule.sourceActionTargetRef || !targetRefs.has(rule.sourceActionTargetRef)) {
+      errors.push(`Rule ${index} shortcutButton must reference a known sourceActionTargetRef.`);
+    }
+    if (rule.label && typeof rule.label !== "string") {
+      errors.push(`Rule ${index} shortcutButton label must be a string.`);
+    }
+  }
+
+  if (rule.type === "capability" && rule.capability === "moveElement") {
+    if (!rule.placementTargetRef || !targetRefs.has(rule.placementTargetRef)) {
+      errors.push(`Rule ${index} moveElement must reference a known placementTargetRef.`);
+    }
+  }
 }

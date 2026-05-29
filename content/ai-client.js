@@ -2,7 +2,7 @@ window.PersoAiClient = (() => {
   const log = window.PersoLogger;
   const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
   const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css", "capability"]);
-  const ALLOWED_CAPABILITIES = new Set(["scrollLock"]);
+  const ALLOWED_CAPABILITIES = new Set(["scrollLock", "shortcutButton", "moveElement"]);
   const ALLOWED_STYLE_KEYS = new Set([
     "background",
     "backgroundColor",
@@ -121,9 +121,13 @@ window.PersoAiClient = (() => {
             "If a rule targets one targetRef and only needs declarations such as display: none, use type style with styles instead of type css.",
             "Do not use type css for simple property changes such as color red or font-size 16px.",
             "For hiding/removing elements, prefer type visibility with action hide, or type style with display none. Do not set styles.visibility.",
-            "Use type capability only for trusted extension-owned behaviors. The only allowed capability is scrollLock.",
+            "Use type capability only for trusted extension-owned behaviors. The allowed capabilities are scrollLock, shortcutButton, and moveElement.",
             "For requests such as stop scrolling, prevent scrolling, or show only the first loaded item, use a capability rule with capability scrollLock instead of raw JavaScript.",
             "A scrollLock capability rule should target the page, feed, or main content area and may include options.preserveSelectors for the first item that should remain visible.",
+            "For requests such as add a button, create a shortcut, move a hidden action closer, or expose an action buried in menus, prefer a shortcutButton capability instead of JavaScript.",
+            "A shortcutButton rule must use targetRef for the container where the new button should appear, sourceActionTargetRef for the existing clickable element to trigger, and a short label.",
+            "shortcutButton only creates extension-owned UI and dispatches a click on an already existing page element.",
+            "For requests to move an existing page element or place an existing control somewhere else, use moveElement with targetRef as the element to move and placementTargetRef as the destination container.",
             "Use only allowed style properties.",
             "If an attached image should be used, set backgroundImage to asset:<assetId>, for example asset:uploadedImage.",
             "When setting a background image, always include backgroundSize: \"cover\", backgroundPosition: \"center center\", and backgroundRepeat: \"no-repeat\"; if the user asks for a page/background theme, also use backgroundAttachment: \"fixed\" unless it targets a small component.",
@@ -142,7 +146,7 @@ window.PersoAiClient = (() => {
             selections,
             availableAssets,
             allowedRuleTypes: ["css", "style", "visibility", "attribute", "capability"],
-            allowedCapabilities: ["scrollLock"],
+            allowedCapabilities: ["scrollLock", "shortcutButton", "moveElement"],
             allowedStyleKeys: ALLOWED_STYLE_KEYS_LIST,
             schemaExample: TRANSFORM_SCHEMA_HINT,
             previousPlan,
@@ -329,6 +333,19 @@ window.PersoAiClient = (() => {
     if (rule.type === "capability") {
       if (!ALLOWED_CAPABILITIES.has(rule.capability)) {
         errors.push(`Rule ${index} has unsupported capability ${rule.capability}.`);
+      }
+      if (rule.capability === "shortcutButton") {
+        if (!rule.sourceActionTargetRef || !targetRefs.has(rule.sourceActionTargetRef)) {
+          errors.push(`Rule ${index} shortcutButton must include sourceActionTargetRef.`);
+        }
+        if (rule.label && typeof rule.label !== "string") {
+          errors.push(`Rule ${index} shortcutButton label must be a string.`);
+        }
+      }
+      if (rule.capability === "moveElement") {
+        if (!rule.placementTargetRef || !targetRefs.has(rule.placementTargetRef)) {
+          errors.push(`Rule ${index} moveElement must include placementTargetRef.`);
+        }
       }
     }
   }

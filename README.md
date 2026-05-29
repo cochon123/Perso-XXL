@@ -11,8 +11,15 @@ Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies 
 - Strict JSON transform-plan generation through OpenRouter.
 - Plan validation that blocks raw selectors on rules, unsafe CSS patterns, and unsupported rule types.
 - Generic executor for `style`, `visibility`, `attribute`, and restricted `css` rules via `targetMap` selectors.
+- Multiple managed modifications per page, stored as independent enable/disable/delete records.
+- In-page modification manager plus a dedicated extension dashboard for all modified pages.
+- Trusted capability rules for product workflows:
+  - `scrollLock`
+  - `shortcutButton`, which creates an extension-owned button that clicks an existing page action.
+  - `moveElement`, which moves an existing page element to a selected destination and can be reverted.
+- Remote image URL download through the background worker, converted into a safe extension asset before use as `asset:<assetId>`.
 - Background injection fallback so the command palette can open on already-loaded pages after extension reloads.
-- Saved plans are stored per hostname + pathname and reapply when the page changes.
+- Saved modifications are stored per hostname + pathname and reapply when the page changes.
 
 ## Load locally in Chrome/Chromium
 
@@ -81,6 +88,8 @@ User prompt + optional element picks
 → Page DOM summary + selection snapshots
 → AI transform planner
 → Plan validator
+→ Managed modification record
+→ Composed active plan
 → Executor
 ```
 
@@ -119,7 +128,20 @@ The model must return JSON like:
 }
 ```
 
-The extension does not execute model-generated JavaScript.
+The extension does not execute model-generated JavaScript. Agent-like behaviors should be added as validated capabilities.
+
+## Dashboard and page manager
+
+Each generated plan is saved as a modification record with:
+
+- `id`
+- `title`
+- `enabled`
+- `sourcePrompt`
+- `plan`
+- timestamps
+
+The in-page manager lets you toggle or remove modifications for the current page. The dashboard is available from the page manager or from the extension options page and shows all modified pages, all rules, and site-level reset controls.
 
 ## Next implementation steps
 

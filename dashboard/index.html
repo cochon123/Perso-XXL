@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Perso XXL Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="dashboard-shell">
+      <header class="dashboard-header">
+        <div>
+          <p class="eyebrow">Perso XXL</p>
+          <h1>Dashboard</h1>
+        </div>
+        <button type="button" id="refresh-btn">Refresh</button>
+      </header>
+
+      <section class="summary-grid" aria-label="Summary">
+        <div>
+          <span id="site-count">0</span>
+          <p>Modified pages</p>
+        </div>
+        <div>
+          <span id="mod-count">0</span>
+          <p>Total modifications</p>
+        </div>
+        <div>
+          <span id="active-count">0</span>
+          <p>Active modifications</p>
+        </div>
+      </section>
+
+      <section class="toolbar" aria-label="Filters">
+        <input id="search-input" type="search" placeholder="Search pages, prompts, or rules">
+      </section>
+
+      <section id="site-list" class="site-list" aria-live="polite"></section>
+      <p id="empty-state" class="empty-state" hidden>No modified pages yet.</p>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>
