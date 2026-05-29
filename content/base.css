@@ -246,3 +246,50 @@ html[data-perso-xxl-enabled="true"] {
   transform: translateX(-50%);
   z-index: 2147483647;
 }
+
+/* ── Feedback buttons on sent bubbles ── */
+#perso-xxl-panel .ai-sent-bubble__feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 45, 122, 0.2);
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(250, 248, 249, 0.5);
+  cursor: pointer;
+  transition:
+    background 220ms ease,
+    color 220ms ease,
+    transform 220ms ease;
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(250, 248, 249, 0.8);
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn:active {
+  transform: scale(0.92);
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn.is-active {
+  background: rgba(255, 45, 122, 0.2);
+  color: #ff6ba8;
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn svg {
+  width: 18px;
+  height: 18px;
+}

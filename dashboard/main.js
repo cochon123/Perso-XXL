@@ -5,18 +5,46 @@ const siteList = document.getElementById("site-list");
 const emptyState = document.getElementById("empty-state");
 const searchInput = document.getElementById("search-input");
 const refreshBtn = document.getElementById("refresh-btn");
+const themeToggle = document.getElementById("theme-toggle");
 const siteCount = document.getElementById("site-count");
 const modCount = document.getElementById("mod-count");
 const activeCount = document.getElementById("active-count");
+const THEME_STORAGE_KEY = "perso-dashboard-theme";
 
 let records = [];
 let mockMode = false;
 
+initThemeToggle();
 refreshBtn.addEventListener("click", loadRecords);
 searchInput.addEventListener("input", render);
 siteList.addEventListener("click", handleActionClick);
 
 loadRecords();
+
+function getTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function setTheme(theme) {
+  const next = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  updateThemeToggleUi();
+}
+
+function updateThemeToggleUi() {
+  if (!themeToggle) return;
+  const dark = getTheme() === "dark";
+  themeToggle.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+  themeToggle.title = dark ? "Light mode" : "Dark mode";
+}
+
+function initThemeToggle() {
+  updateThemeToggleUi();
+  themeToggle?.addEventListener("click", () => {
+    setTheme(getTheme() === "dark" ? "light" : "dark");
+  });
+}
 
 function hasExtensionStorage() {
   return Boolean(extensionApi?.storage?.local?.get);
@@ -107,14 +135,13 @@ function recordMatches(record, query) {
 }
 
 function renderRecord(record) {
-  const active = record.modifications.filter((mod) => mod.enabled !== false).length;
   const url = record.site?.url || record.key.replace(SITE_RECORD_PREFIX, "");
   return `
     <article class="site-card" data-record-key="${escapeAttr(record.key)}">
       <header class="site-head">
         <div class="site-title">
           <h2>${escapeHtml(record.site?.title || url)}</h2>
-          <p>${escapeHtml(url)} · ${active}/${record.modifications.length} active</p>
+          <p>${escapeHtml(url)}</p>
         </div>
         <div class="site-actions">
           <button type="button" data-action="disable-site">Disable all</button>
