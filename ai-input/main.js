@@ -448,7 +448,7 @@ function contentWrapsToMultipleLines() {
     white-space: pre-wrap;
     word-break: break-word;
   `;
-  document.body.appendChild(clone);
+  promptEditor.parentElement.appendChild(clone);
 
   const lineHeight = parseFloat(getComputedStyle(promptEditor).lineHeight) || 20;
   const isMultiline = aiInput.dataset.multiline === 'true';

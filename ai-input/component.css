@@ -71,8 +71,8 @@
   max-width: 100%;
   padding: 10px 14px;
   border-radius: calc(var(--ai-radius) * 1px);
-  border: 1px solid rgba(255, 45, 122, 0.22);
-  background: rgba(255, 45, 122, 0.1);
+  border: 1px solid rgba(255, 45, 122, 0.36);
+  background: #2a111e;
   color: var(--ai-text);
   font-size: calc(var(--ai-font-size) * 1px);
   line-height: 1.45;
@@ -89,6 +89,11 @@
 }
 
 /* ── AI Input Component ── */
+.ai-input,
+.ai-input * {
+  box-sizing: border-box;
+}
+
 .ai-input {
   position: relative;
   display: flex;
@@ -412,6 +417,8 @@
   font-size: calc(var(--ai-font-size) * 1px);
   font-weight: var(--ai-font-weight);
   line-height: calc(var(--ai-btn-size) * 1px);
+  letter-spacing: normal;
+  text-transform: none;
   padding: 0 6px;
   min-height: calc(var(--ai-btn-size) * 1px);
   max-height: calc(var(--ai-btn-size) * 1px);
@@ -493,14 +500,25 @@
 }
 
 .ai-input__btn {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   width: calc(var(--ai-btn-size) * 1px);
   height: calc(var(--ai-btn-size) * 1px);
+  min-width: calc(var(--ai-btn-size) * 1px);
+  min-height: calc(var(--ai-btn-size) * 1px);
+  margin: 0;
+  padding: 0;
   border: 0;
   border-radius: calc((var(--ai-radius) - 4) * 1px);
+  font: inherit;
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
+  text-transform: none;
   cursor: pointer;
   transition:
     background calc(var(--ai-transition) * 1ms) ease,
@@ -547,6 +565,8 @@
 }
 
 .ai-input__icon {
+  display: block;
+  flex-shrink: 0;
   width: calc(var(--ai-icon-size) * 1px);
   height: calc(var(--ai-icon-size) * 1px);
   transition: transform calc(var(--ai-transition) * 1ms) ease;

@@ -63,6 +63,8 @@ html[data-perso-xxl-enabled="true"] {
   bottom: 1.5rem;
   left: 50%;
   transform: translateX(-50%) translateY(120%);
+  opacity: 0;
+  visibility: hidden;
   padding: 0.65rem 1.1rem;
   border-radius: 999px;
   background: rgba(18, 10, 16, 0.94);
@@ -72,11 +74,20 @@ html[data-perso-xxl-enabled="true"] {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
   z-index: 2147483647;
   pointer-events: none;
-  transition: transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1);
+  transition:
+    opacity 160ms ease,
+    transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    visibility 0s linear 320ms;
 }
 
 #perso-xxl-panel .productivity-toast.is-visible {
   transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 160ms ease,
+    transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    visibility 0s;
 }
 
 /* ── Picker ── */
