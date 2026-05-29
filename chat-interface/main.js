@@ -992,7 +992,7 @@ function appendAssistantBubble(text) {
   likeBtn.addEventListener('click', () => {
     feedbackBar.querySelectorAll('.ai-sent-bubble__feedback-btn').forEach(btn => btn.classList.remove('is-active'));
     likeBtn.classList.add('is-active');
-    showToast('Feedback recorded: thumbs up');
+    recordAssistantFeedback({ feedback: 'like', assistantText: text });
   });
 
   const dislikeBtn = document.createElement('button');
@@ -1022,7 +1022,7 @@ function appendAssistantBubble(text) {
   dislikeBtn.addEventListener('click', () => {
     feedbackBar.querySelectorAll('.ai-sent-bubble__feedback-btn').forEach(btn => btn.classList.remove('is-active'));
     dislikeBtn.classList.add('is-active');
-    showToast('Feedback recorded: thumbs down');
+    recordAssistantFeedback({ feedback: 'dislike', assistantText: text });
   });
 
   feedbackBar.appendChild(likeBtn);
@@ -1038,6 +1038,18 @@ function appendAssistantBubble(text) {
       { opacity: 1, y: 0, scale: 1, duration: 0.38, ease: 'power2.out' },
     );
   }
+}
+
+function recordAssistantFeedback(payload) {
+  const api = hostApi();
+  if (api?.onFeedback) {
+    api.onFeedback(payload)
+      .then(() => showToast('Feedback saved'))
+      .catch(() => showToast('Feedback saved locally'));
+    return;
+  }
+
+  showToast(`Feedback recorded: ${payload.feedback === 'like' ? 'thumbs up' : 'thumbs down'}`);
 }
 
 function restoreEditorSnapshot(snapshot, tokens = []) {

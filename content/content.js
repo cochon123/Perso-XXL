@@ -15,6 +15,8 @@ let modPreviewOverlay = null;
 const extensionApi = globalThis.browser || globalThis.chrome;
 const SITE_RECORD_PREFIX = "siteRecord:";
 const LEGACY_PLAN_PREFIX = "sitePlan:";
+const FEEDBACK_ENDPOINT = window.PersoEnv?.FEEDBACK_ENDPOINT || "http://localhost:8787/feedback";
+const INSTALL_ID_KEY = "persoInstallId";
 
 function injectPanelFontFace() {
   const styleId = "perso-xxl-font-face";
@@ -354,6 +356,10 @@ function initExtensionHost() {
       await revertAppliedPlan();
     },
 
+    async onFeedback(payload) {
+      return sendFeedback(payload || {});
+    },
+
     openDashboard() {
       try {
         const result = extensionApi.runtime.sendMessage({ type: "PERSO_OPEN_DASHBOARD" });
@@ -547,19 +553,21 @@ async function generateAndApplyPlan({ prompt, tokens }) {
   const modification = buildModification({ prompt, plan });
   currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
   currentSiteRecord.modifications.push(modification);
-  currentSiteRecord.conversations.push({
+  const userMessage = {
     id: createId("msg"),
     role: "user",
     text: prompt,
     createdAt: new Date().toISOString(),
     modificationId: modification.id
-  }, {
+  };
+  const assistantMessage = {
     id: createId("msg"),
     role: "assistant",
     text: `Created modification: ${modification.title}`,
     createdAt: new Date().toISOString(),
     modificationId: modification.id
-  });
+  };
+  currentSiteRecord.conversations.push(userMessage, assistantMessage);
   currentSiteRecord.lastUpdatedAt = new Date().toISOString();
   currentPlan = composeEnabledPlan(currentSiteRecord);
   zeroMatchRetryCount = 0;
@@ -1028,7 +1036,7 @@ function refreshConversationPreview() {
     const isAssistant = message.role === "assistant";
     const feedbackHtml = isAssistant ? `
       <div class="ai-sent-bubble__feedback">
-        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--like" aria-label="Thumbs up" onclick="this.classList.toggle('is-active'); this.parentElement.querySelector('.ai-sent-bubble__feedback-btn--dislike').classList.remove('is-active');">
+        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--like" aria-label="Thumbs up" data-feedback="like" data-message-id="${escapeAttr(message.id || "")}">
           <svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
             <path d="M507.532,223.313c-9.891-24.594-35-41.125-62.469-41.125H365.86c-2.516,0-4.75-0.031-6.75-0.094
               c0.641-0.844,1.203-1.594,1.672-2.203c2.719-3.563,4.922-6.406,6.656-9.188c0.688-0.922,1.688-2.047,2.859-3.453
@@ -1048,7 +1056,7 @@ function refreshConversationPreview() {
               c0,8.969-7.281,16.25-16.25,16.25c-8.984,0-16.266-7.281-16.266-16.25C33.532,381.391,40.813,374.125,49.798,374.125z"/>
           </svg>
         </button>
-        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--dislike" aria-label="Thumbs down" onclick="this.classList.toggle('is-active'); this.parentElement.querySelector('.ai-sent-bubble__feedback-btn--like').classList.remove('is-active');">
+        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--dislike" aria-label="Thumbs down" data-feedback="dislike" data-message-id="${escapeAttr(message.id || "")}">
           <svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true" style="transform: scaleY(-1);">
             <path d="M507.532,223.313c-9.891-24.594-35-41.125-62.469-41.125H365.86c-2.516,0-4.75-0.031-6.75-0.094
               c0.641-0.844,1.203-1.594,1.672-2.203c2.719-3.563,4.922-6.406,6.656-9.188c0.688-0.922,1.688-2.047,2.859-3.453
@@ -1077,6 +1085,77 @@ function refreshConversationPreview() {
     </div>
   `;
   }).join("");
+
+  sentList.querySelectorAll("[data-feedback]").forEach((button) => {
+    button.addEventListener("click", handleFeedbackClick);
+  });
+}
+
+async function handleFeedbackClick(event) {
+  const button = event.currentTarget;
+  const feedback = button.dataset.feedback;
+  const messageId = button.dataset.messageId;
+  const feedbackBar = button.closest(".ai-sent-bubble__feedback");
+
+  feedbackBar?.querySelectorAll(".ai-sent-bubble__feedback-btn").forEach((btn) => {
+    btn.classList.toggle("is-active", btn === button);
+  });
+
+  try {
+    await sendFeedback({ feedback, messageId });
+    window.PersoAiBar?.toast?.("Feedback saved");
+  } catch (error) {
+    log.warn("feedback.save.failed", { error: error.message || String(error), feedback, messageId });
+    window.PersoAiBar?.toast?.("Feedback saved locally");
+  }
+}
+
+async function sendFeedback({ feedback, messageId }) {
+  const record = normalizeSiteRecord(currentSiteRecord);
+  const message = messageId
+    ? record.conversations.find((item) => item.id === messageId)
+    : [...record.conversations].reverse().find((item) => item.role === "assistant");
+  if (!message || message.role !== "assistant") throw new Error("Assistant message not found.");
+
+  const messageIndex = record.conversations.findIndex((item) => item.id === messageId);
+  const promptMessage = [...record.conversations.slice(0, messageIndex)].reverse()
+    .find((item) => item.role === "user" && item.modificationId === message.modificationId);
+  const installId = await getInstallId();
+  const manifest = extensionApi.runtime?.getManifest?.();
+
+  const response = await fetch(FEEDBACK_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+    body: JSON.stringify({
+      feedback,
+      messageId: message.id,
+      conversationId: getSiteRecordKey(),
+      modificationId: message.modificationId || null,
+      promptText: promptMessage?.text || "",
+      assistantText: message.text || "",
+      siteUrl: record.site?.url || location.href,
+      siteTitle: record.site?.title || document.title,
+      pageHostname: record.site?.hostname || location.hostname,
+      pagePathname: record.site?.pathname || location.pathname,
+      installId,
+      extensionVersion: manifest?.version || CONTENT_VERSION,
+      metadata: {
+        source: "extension-panel"
+      }
+    })
+  });
+
+  if (!response.ok) throw new Error(`Feedback server returned ${response.status}`);
+  log.info("feedback.saved", { feedback, messageId });
+}
+
+async function getInstallId() {
+  const state = await extensionApi.storage.local.get([INSTALL_ID_KEY]);
+  if (state[INSTALL_ID_KEY]) return state[INSTALL_ID_KEY];
+  const installId = createId("install");
+  await extensionApi.storage.local.set({ [INSTALL_ID_KEY]: installId });
+  return installId;
 }
 
 function titleFromPrompt(prompt) {
@@ -1119,6 +1198,10 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("'", "&#39;");
 }
 
 extensionApi.storage.onChanged?.addListener((changes, area) => {

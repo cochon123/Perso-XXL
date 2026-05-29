@@ -23,6 +23,7 @@ await writeFile(
       OPENROUTER_REASONING_ENABLED: env.OPENROUTER_REASONING_ENABLED !== "false",
       OPENROUTER_REASONING_EFFORT: env.OPENROUTER_REASONING_EFFORT || "low",
       OPENROUTER_REASONING_EXCLUDE: env.OPENROUTER_REASONING_EXCLUDE !== "false",
+      FEEDBACK_ENDPOINT: env.FEEDBACK_ENDPOINT || "http://localhost:8787/feedback",
       DEV_LOGS: env.DEV_LOGS !== "false"
     },
     null,

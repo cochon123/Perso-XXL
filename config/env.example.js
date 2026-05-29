@@ -3,5 +3,6 @@ window.PersoEnv = {
   OPENROUTER_API_KEY: "",
   // Omit model to use the extension default from ai-client.js
   OPENROUTER_REASONING_ENABLED: false,
+  FEEDBACK_ENDPOINT: "http://localhost:8787/feedback",
   DEV_LOGS: false,
 };

@@ -26,7 +26,7 @@ Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies 
 Start the dev log terminal:
 
 ```sh
-node scripts/log-server.mjs
+PERSO_DATABASE_URL=postgres://user:password@localhost:5432/perso_xxl npm run dev:server
 ```
 
 1. Open `chrome://extensions`.
@@ -39,14 +39,14 @@ node scripts/log-server.mjs
 
 For local images, use "Attach image" in the command palette. Browser extensions cannot read a local path typed into the prompt, such as `/home/me/image.png`, without an explicit file picker selection.
 
-With the log server running, extension events will stream into your terminal.
+With the dev server running, extension events will stream into your terminal. Like/dislike feedback is saved to Postgres and can be reviewed at `http://localhost:8787/feedback`.
 
 ## Load locally in Firefox
 
 Start the dev log terminal:
 
 ```sh
-node scripts/log-server.mjs
+PERSO_DATABASE_URL=postgres://user:password@localhost:5432/perso_xxl npm run dev:server
 ```
 
 1. Open `about:debugging#/runtime/this-firefox`.
@@ -142,6 +142,17 @@ Each generated plan is saved as a modification record with:
 - timestamps
 
 The in-page manager lets you toggle or remove modifications for the current page. The dashboard is available from the page manager or from the extension options page and shows all modified pages, all rules, and site-level reset controls.
+
+## Feedback collection
+
+The like/dislike controls on assistant messages post feedback to the local developer server:
+
+```sh
+npm install
+PERSO_DATABASE_URL=postgres://user:password@localhost:5432/perso_xxl npm run dev:server
+```
+
+The server creates the `feedback_events` table automatically. Open `http://localhost:8787/feedback` to review totals and recent feedback. You can also use `DATABASE_URL` instead of `PERSO_DATABASE_URL`.
 
 ## Next implementation steps
 

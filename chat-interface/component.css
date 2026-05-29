@@ -47,9 +47,9 @@
   --ci-bubble-padding-y: 10;
   --ci-bubble-user-bg: #2a111e;
   --ci-bubble-user-border: rgba(255, 45, 122, 0.36);
-  --ci-bubble-assistant-bg: rgba(255, 255, 255, 0.08);
+  --ci-bubble-assistant-bg: #1e1018;
   --ci-bubble-assistant-border: rgba(255, 255, 255, 0.1);
-  --ci-bubble-assistant-text: rgba(250, 248, 249, 0.82);
+  --ci-bubble-assistant-text: #faf8f9;
 }
 
 .preview-stack {
@@ -90,7 +90,7 @@
   border: 1px solid var(--ci-bubble-user-border);
   background: var(--ci-bubble-user-bg);
   color: var(--ai-text);
-  font-family: Inter, Arial, system-ui, sans-serif;
+  font-family: inherit;
   font-size: calc(var(--ai-font-size) * 1px);
   line-height: 1.45;
   letter-spacing: 0;

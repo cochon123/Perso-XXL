@@ -17,7 +17,8 @@
     "http://*/*",
     "https://*/*",
     "https://openrouter.ai/*",
-    "http://localhost:8787/*"
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "scripts": [

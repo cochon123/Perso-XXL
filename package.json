@@ -1,0 +1,23 @@
+{
+  "name": "perso-xxl",
+  "version": "1.0.0",
+  "description": "Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies AI-personalized website layout plans through OpenRouter.",
+  "type": "module",
+  "scripts": {
+    "dev:server": "node scripts/log-server.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cochon123/Perso-XXL.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cochon123/Perso-XXL/issues"
+  },
+  "homepage": "https://github.com/cochon123/Perso-XXL#readme",
+  "dependencies": {
+    "pg": "^8.21.0"
+  }
+}

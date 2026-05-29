@@ -111,7 +111,7 @@ html[data-perso-xxl-enabled="true"] {
   min-width: 0;
   margin: 0;
   color: var(--ai-text);
-  font-family: Inter, Arial, system-ui, sans-serif;
+  font-family: inherit;
   font-size: calc(var(--ai-font-size) * 1px);
   font-weight: 600;
   line-height: 1.35;
@@ -149,7 +149,7 @@ html[data-perso-xxl-enabled="true"] {
   color: var(--ai-text);
   cursor: pointer;
   padding: 0 12px;
-  font-family: Inter, Arial, system-ui, sans-serif;
+  font-family: inherit;
   font-size: 13px;
 }
 
