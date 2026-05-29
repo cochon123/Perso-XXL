@@ -141,7 +141,6 @@
   position: relative;
   flex-shrink: 0;
   order: 1;
-  will-change: transform;
 }
 
 .ai-input__field-wrap {
@@ -151,7 +150,6 @@
   order: 2;
   display: flex;
   align-items: center;
-  will-change: transform;
 }
 
 .ai-input[data-multiline="true"] .ai-input__field-wrap {
@@ -163,7 +161,6 @@
 .ai-input__btn--send {
   order: 3;
   flex-shrink: 0;
-  will-change: transform;
 }
 
 .ai-input[data-multiline="true"] .ai-input__btn--send {
@@ -404,6 +401,10 @@
 }
 
 .ai-input__placeholder[hidden] {
+  display: none;
+}
+
+.ai-input__editor[data-empty="false"] + .ai-input__placeholder {
   display: none;
 }
 

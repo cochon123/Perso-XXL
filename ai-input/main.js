@@ -412,6 +412,20 @@ function syncEditorEmptyState() {
   promptPlaceholder.hidden = !empty;
 }
 
+function queueEditorStateSync() {
+  requestAnimationFrame(() => {
+    syncEditorEmptyState();
+    updateLayoutMode();
+    updateSendState();
+  });
+}
+
+function hidePlaceholderForPendingInput(e) {
+  if (!e.inputType?.startsWith('insert') && e.inputType !== 'formatSetBlockTextDirection') return;
+  promptEditor.dataset.empty = 'false';
+  promptPlaceholder.hidden = true;
+}
+
 function getNumericVar(name, fallback) {
   return parseFloat(getCssValue(name)) || fallback;
 }
@@ -480,6 +494,13 @@ function animateLayoutChange(nextMultiline) {
   aiInput.dataset.layoutAnimating = 'true';
   setLayoutMode(nextMultiline);
 
+  if (targets.length === 0) {
+    layoutAnimating = false;
+    delete aiInput.dataset.layoutAnimating;
+    gsap.set(aiInput, { clearProps: 'transform' });
+    return;
+  }
+
   let completed = 0;
   const finish = () => {
     completed += 1;
@@ -487,6 +508,7 @@ function animateLayoutChange(nextMultiline) {
     layoutAnimating = false;
     delete aiInput.dataset.layoutAnimating;
     targets.forEach((el) => gsap.set(el, { clearProps: 'transform' }));
+    gsap.set(aiInput, { clearProps: 'transform' });
   };
 
   targets.forEach((el, index) => {
@@ -495,7 +517,7 @@ function animateLayoutChange(nextMultiline) {
     gsap.killTweensOf(el, 'x,y');
     gsap.fromTo(
       el,
-      { x: first.left - last.left, y: first.top - last.top },
+      { x: Math.round(first.left - last.left), y: Math.round(first.top - last.top) },
       {
         x: 0,
         y: 0,
@@ -509,7 +531,12 @@ function animateLayoutChange(nextMultiline) {
   gsap.fromTo(
     aiInput,
     { scale: nextMultiline ? 0.992 : 0.996 },
-    { scale: 1, duration: LAYOUT_ANIM_DURATION, ease: 'power2.out' },
+    {
+      scale: 1,
+      duration: LAYOUT_ANIM_DURATION,
+      ease: 'power2.out',
+      onComplete: () => gsap.set(aiInput, { clearProps: 'transform' }),
+    },
   );
 }
 
@@ -992,14 +1019,21 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMenu();
 });
 
-promptEditor.addEventListener('input', () => {
-  syncEditorEmptyState();
-  updateLayoutMode();
-  updateSendState();
+promptEditor.addEventListener('beforeinput', hidePlaceholderForPendingInput);
+promptEditor.addEventListener('compositionstart', () => {
+  promptEditor.dataset.empty = 'false';
+  promptPlaceholder.hidden = true;
 });
+promptEditor.addEventListener('input', queueEditorStateSync);
 
-promptEditor.addEventListener('focus', () => { aiInput.dataset.state = 'focused'; });
-promptEditor.addEventListener('blur', () => { aiInput.dataset.state = 'idle'; });
+promptEditor.addEventListener('focus', () => {
+  if (isLoading || isDone) return;
+  aiInput.dataset.state = 'focused';
+});
+promptEditor.addEventListener('blur', () => {
+  if (isLoading || isDone) return;
+  aiInput.dataset.state = 'idle';
+});
 
 promptEditor.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {

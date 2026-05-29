@@ -100,8 +100,8 @@ html[data-perso-xxl-enabled="true"] {
 }
 
 #perso-xxl-picker-highlight {
-  background: rgba(230, 163, 72, 0.12);
-  border: 2px solid #e6a348;
+  background: rgba(255, 45, 122, 0.12);
+  border: 2px solid #ff2d7a;
   box-sizing: border-box;
   pointer-events: none;
   position: fixed;

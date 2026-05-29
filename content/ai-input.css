@@ -143,7 +143,6 @@
   position: relative;
   flex-shrink: 0;
   order: 1;
-  will-change: transform;
 }
 
 #perso-xxl-panel .ai-input__field-wrap{
@@ -153,7 +152,6 @@
   order: 2;
   display: flex;
   align-items: center;
-  will-change: transform;
 }
 
 #perso-xxl-panel .ai-input[data-multiline="true"] .ai-input__field-wrap{
@@ -165,7 +163,6 @@
 #perso-xxl-panel .ai-input__btn--send{
   order: 3;
   flex-shrink: 0;
-  will-change: transform;
 }
 
 #perso-xxl-panel .ai-input[data-multiline="true"] .ai-input__btn--send{
@@ -399,6 +396,10 @@
 }
 
 #perso-xxl-panel .ai-input__placeholder[hidden]{
+  display: none;
+}
+
+#perso-xxl-panel .ai-input__editor[data-empty="false"] + .ai-input__placeholder{
   display: none;
 }
 
