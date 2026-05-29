@@ -8,6 +8,31 @@ window.PersoExecutor = (() => {
   const APPLIED_ATTR = "data-perso-xxl-rule";
   const SHORTCUT_ATTR = "data-perso-xxl-shortcut";
   const MOVED_ATTR = "data-perso-xxl-moved";
+  const CREATED_ATTR = "data-perso-xxl-created";
+  const SWAPPED_ATTR = "data-perso-xxl-swapped";
+  const ALLOWED_INSERT_TAGS = new Set([
+    "a",
+    "aside",
+    "button",
+    "div",
+    "figcaption",
+    "figure",
+    "footer",
+    "h1",
+    "h2",
+    "h3",
+    "header",
+    "img",
+    "li",
+    "nav",
+    "p",
+    "section",
+    "span",
+    "strong",
+    "ul"
+  ]);
+  const ALLOWED_INSERT_ATTRIBUTES = new Set(["alt", "aria-label", "href", "role", "src", "title"]);
+  const ALLOWED_PLACEMENTS = new Set(["append", "prepend", "before", "after", "replace"]);
   const originalState = new WeakMap();
   const originalPositions = new WeakMap();
 
@@ -23,6 +48,7 @@ window.PersoExecutor = (() => {
     document.documentElement.setAttribute("data-perso-xxl-enabled", "true");
     injectTheme(plan.theme || {});
     clearShortcutButtons();
+    clearCreatedElements();
     clearAppliedState();
 
     const cssRules = [];
@@ -67,7 +93,16 @@ window.PersoExecutor = (() => {
     document.documentElement.removeAttribute("data-perso-xxl-scroll-locked");
 
     const elements = Array.from(document.querySelectorAll(`[${APPLIED_ATTR}]`));
-    for (const element of elements) {
+    const createdElements = elements.filter((element) => element.hasAttribute(CREATED_ATTR));
+    const restoredElements = elements
+      .filter((element) => !element.hasAttribute(CREATED_ATTR))
+      .sort((left, right) => getOriginalIndex(right) - getOriginalIndex(left));
+
+    for (const element of createdElements) {
+      restoreElement(element);
+    }
+
+    for (const element of restoredElements) {
       restoreElement(element);
     }
 
@@ -170,6 +205,22 @@ window.PersoExecutor = (() => {
 
     if (rule.capability === "moveElement") {
       return applyMoveElementCapability(rule, plan);
+    }
+
+    if (rule.capability === "insertElement") {
+      return applyInsertElementCapability(rule, plan);
+    }
+
+    if (rule.capability === "cloneElement") {
+      return applyCloneElementCapability(rule, plan);
+    }
+
+    if (rule.capability === "swapElements") {
+      return applySwapElementsCapability(rule, plan);
+    }
+
+    if (rule.capability === "menuShortcut") {
+      return applyMenuShortcutCapability(rule, plan);
     }
 
     if (rule.capability !== "scrollLock") {
@@ -289,11 +340,7 @@ window.PersoExecutor = (() => {
       rememberPosition(element);
       mark(element, rule.id);
       element.setAttribute(MOVED_ATTR, "true");
-      if (rule.placement === "prepend") {
-        destination.insertBefore(element, destination.firstChild);
-      } else {
-        destination.appendChild(element);
-      }
+      placeElement(element, destination, normalizePlacement(rule.placement, "append", ["append", "prepend", "before", "after"]));
     }
 
     log.info("executor.capability.move_element", {
@@ -304,6 +351,167 @@ window.PersoExecutor = (() => {
     });
 
     return elements.length;
+  }
+
+  function applyInsertElementCapability(rule, plan) {
+    const targets = resolveRuleElements(rule, plan);
+    if (!targets.length) {
+      log.warn("executor.capability.insert_element.missing_target", { ruleId: rule.id, targetRef: rule.targetRef });
+      return 0;
+    }
+
+    const placement = normalizePlacement(rule.placement);
+    let insertedCount = 0;
+
+    for (const target of targets) {
+      const element = buildInsertedElement(rule.element || {}, plan, rule.id);
+      if (!element) continue;
+      markCreated(element, rule.id);
+      placeElement(element, target, placement);
+      insertedCount += 1;
+    }
+
+    log.info("executor.capability.insert_element", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      insertedCount
+    });
+
+    return insertedCount;
+  }
+
+  function applyCloneElementCapability(rule, plan) {
+    const targets = resolveRuleElements(rule, plan);
+    const sources = resolveTargetElements(plan.targetMap?.[rule.sourceTargetRef]);
+    const source = sources[0];
+
+    if (!targets.length || !source) {
+      log.warn("executor.capability.clone_element.missing_target", {
+        ruleId: rule.id,
+        targetCount: targets.length,
+        sourceCount: sources.length
+      });
+      return 0;
+    }
+
+    const placement = normalizePlacement(rule.placement);
+    let clonedCount = 0;
+
+    for (const target of targets) {
+      const clone = source.cloneNode(true);
+      stripPersoAttributes(clone);
+      if (rule.text) clone.textContent = sanitizeText(rule.text, 240);
+      if (rule.label) clone.setAttribute("aria-label", sanitizeText(rule.label, 120));
+      markCreated(clone, rule.id);
+      placeElement(clone, target, placement);
+      clonedCount += 1;
+    }
+
+    log.info("executor.capability.clone_element", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      sourceTargetRef: rule.sourceTargetRef,
+      clonedCount
+    });
+
+    return clonedCount;
+  }
+
+  function applySwapElementsCapability(rule, plan) {
+    const elements = resolveRuleElements(rule, plan);
+    const otherElements = resolveTargetElements(plan.targetMap?.[rule.otherTargetRef]);
+    const first = elements[0];
+    const second = otherElements[0];
+
+    if (!first || !second || first === second || first.contains(second) || second.contains(first)) {
+      log.warn("executor.capability.swap_elements.missing_target", {
+        ruleId: rule.id,
+        firstCount: elements.length,
+        secondCount: otherElements.length
+      });
+      return 0;
+    }
+
+    rememberElement(first);
+    rememberElement(second);
+    rememberPosition(first);
+    rememberPosition(second);
+    mark(first, rule.id);
+    mark(second, rule.id);
+
+    if (first.getAttribute(SWAPPED_ATTR) === rule.id && second.getAttribute(SWAPPED_ATTR) === rule.id) {
+      return 2;
+    }
+
+    first.setAttribute(MOVED_ATTR, "true");
+    second.setAttribute(MOVED_ATTR, "true");
+    first.setAttribute(SWAPPED_ATTR, rule.id || "true");
+    second.setAttribute(SWAPPED_ATTR, rule.id || "true");
+
+    const firstMarker = document.createComment("perso-xxl-swap-first");
+    const secondMarker = document.createComment("perso-xxl-swap-second");
+    first.parentNode.insertBefore(firstMarker, first);
+    second.parentNode.insertBefore(secondMarker, second);
+    secondMarker.parentNode.insertBefore(first, secondMarker);
+    firstMarker.parentNode.insertBefore(second, firstMarker);
+    firstMarker.remove();
+    secondMarker.remove();
+
+    log.info("executor.capability.swap_elements", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      otherTargetRef: rule.otherTargetRef
+    });
+
+    return 2;
+  }
+
+  function applyMenuShortcutCapability(rule, plan) {
+    const placementElements = resolveRuleElements(rule, plan);
+    const menuElements = resolveTargetElements(plan.targetMap?.[rule.menuTargetRef]);
+    const placement = placementElements[0] || document.querySelector("header, nav, [role='toolbar'], main") || document.body;
+    const menu = menuElements[0];
+
+    if (!placement || !menu || !rule.actionText) {
+      log.warn("executor.capability.menu_shortcut.missing_target", {
+        ruleId: rule.id,
+        placementCount: placementElements.length,
+        menuCount: menuElements.length,
+        hasActionText: Boolean(rule.actionText)
+      });
+      return 0;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute(SHORTCUT_ATTR, rule.id || "menu-shortcut");
+    button.className = "perso-xxl-shortcut-button";
+    button.textContent = sanitizeShortcutLabel(rule.label || rule.actionText);
+    markCreated(button, rule.id);
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerElement(menu);
+      window.setTimeout(() => {
+        const action = findVisibleAction(rule.actionText);
+        if (action) triggerElement(action);
+        else log.warn("executor.capability.menu_shortcut.action_missing", { ruleId: rule.id, actionText: rule.actionText });
+      }, Number(rule.delayMs) > 0 ? Math.min(Number(rule.delayMs), 1000) : 120);
+    });
+
+    placeElement(button, placement, normalizePlacement(rule.placement, "append", ["append", "prepend"]));
+    rememberElement(placement);
+    mark(placement, rule.id);
+    injectShortcutCss();
+
+    log.info("executor.capability.menu_shortcut", {
+      ruleId: rule.id,
+      targetRef: rule.targetRef,
+      menuTargetRef: rule.menuTargetRef,
+      actionText: rule.actionText
+    });
+
+    return 1;
   }
 
   function injectShortcutCss() {
@@ -348,6 +556,10 @@ window.PersoExecutor = (() => {
     document.querySelectorAll(`[${SHORTCUT_ATTR}]`).forEach((element) => element.remove());
   }
 
+  function clearCreatedElements() {
+    document.querySelectorAll(`[${CREATED_ATTR}]`).forEach((element) => element.remove());
+  }
+
   function rememberElement(element) {
     if (originalState.has(element)) return;
 
@@ -361,7 +573,9 @@ window.PersoExecutor = (() => {
     if (originalPositions.has(element)) return;
     originalPositions.set(element, {
       parent: element.parentNode,
-      nextSibling: element.nextSibling
+      previousSibling: element.previousSibling,
+      nextSibling: element.nextSibling,
+      index: Array.from(element.parentNode?.childNodes || []).indexOf(element)
     });
   }
 
@@ -375,13 +589,28 @@ window.PersoExecutor = (() => {
   }
 
   function restoreElement(element) {
+    if (element.hasAttribute(CREATED_ATTR)) {
+      element.remove();
+      return;
+    }
+
     const original = originalState.get(element);
     const originalPosition = originalPositions.get(element);
 
-    if (originalPosition?.parent?.isConnected && element.parentNode !== originalPosition.parent) {
+    if (originalPosition?.parent?.isConnected && (
+      element.parentNode !== originalPosition.parent ||
+      element.nextSibling !== originalPosition.nextSibling
+    )) {
+      const referenceNode = originalPosition.nextSibling?.parentNode === originalPosition.parent
+        ? originalPosition.nextSibling
+        : originalPosition.parent.childNodes[originalPosition.index] !== element
+          ? originalPosition.parent.childNodes[originalPosition.index] || null
+          : originalPosition.previousSibling?.parentNode === originalPosition.parent
+            ? originalPosition.previousSibling.nextSibling
+            : null;
       originalPosition.parent.insertBefore(
         element,
-        originalPosition.nextSibling?.parentNode === originalPosition.parent ? originalPosition.nextSibling : null
+        referenceNode
       );
     }
 
@@ -404,12 +633,182 @@ window.PersoExecutor = (() => {
 
     element.removeAttribute(APPLIED_ATTR);
     element.removeAttribute(MOVED_ATTR);
+    element.removeAttribute(SWAPPED_ATTR);
     originalState.delete(element);
     originalPositions.delete(element);
   }
 
+  function getOriginalIndex(element) {
+    return originalPositions.get(element)?.index ?? -1;
+  }
+
   function mark(element, ruleId) {
     element.setAttribute(APPLIED_ATTR, ruleId || "anonymous");
+  }
+
+  function markCreated(element, ruleId) {
+    mark(element, ruleId);
+    element.setAttribute(CREATED_ATTR, "true");
+  }
+
+  function normalizePlacement(value, fallback = "append", allowed = Array.from(ALLOWED_PLACEMENTS)) {
+    const placement = String(value || fallback).trim().toLowerCase();
+    return allowed.includes(placement) ? placement : fallback;
+  }
+
+  function placeElement(element, target, placement) {
+    if (!element || !target?.parentNode && !["append", "prepend"].includes(placement)) return;
+
+    if (placement === "prepend") {
+      target.insertBefore(element, target.firstChild);
+    } else if (placement === "before") {
+      target.parentNode.insertBefore(element, target);
+    } else if (placement === "after") {
+      target.parentNode.insertBefore(element, target.nextSibling);
+    } else if (placement === "replace") {
+      target.parentNode.insertBefore(element, target);
+      rememberElement(target);
+      mark(target, "replaced");
+      target.style.display = "none";
+    } else {
+      target.appendChild(element);
+    }
+  }
+
+  function buildInsertedElement(descriptor, plan, ruleId, depth = 0) {
+    if (!descriptor || typeof descriptor !== "object" || depth > 4) return null;
+
+    const tag = String(descriptor.tag || "div").toLowerCase();
+    if (!ALLOWED_INSERT_TAGS.has(tag)) return null;
+
+    const element = document.createElement(tag);
+    element.className = "perso-xxl-inserted";
+    if (descriptor.text) element.textContent = sanitizeText(descriptor.text, 500);
+
+    applySafeAttributes(element, descriptor.attributes || {}, plan);
+    applyDescriptorStyles(element, descriptor.styles || {}, plan);
+
+    for (const childDescriptor of Array.isArray(descriptor.children) ? descriptor.children.slice(0, 8) : []) {
+      const child = buildInsertedElement(childDescriptor, plan, ruleId, depth + 1);
+      if (child) element.appendChild(child);
+    }
+
+    if (tag === "button" && descriptor.actionText) {
+      element.type = "button";
+      element.addEventListener("click", () => {
+        const action = findVisibleAction(descriptor.actionText);
+        if (action) triggerElement(action);
+      });
+    }
+
+    markCreated(element, ruleId);
+    return element;
+  }
+
+  function applySafeAttributes(element, attributes, plan) {
+    if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) return;
+
+    for (const [name, value] of Object.entries(attributes)) {
+      if (!ALLOWED_INSERT_ATTRIBUTES.has(name) || value === null) continue;
+      const normalizedValue = sanitizeText(value, 500);
+      if (name === "href" && !isSafeHref(normalizedValue)) continue;
+      if (name === "src") {
+        const src = resolveAssetAttribute(normalizedValue, plan);
+        if (!src) continue;
+        element.setAttribute(name, src);
+        continue;
+      }
+      element.setAttribute(name, normalizedValue);
+    }
+  }
+
+  function applyDescriptorStyles(element, styles, plan) {
+    if (!styles || typeof styles !== "object" || Array.isArray(styles)) return;
+
+    for (const [key, value] of Object.entries(styles)) {
+      const resolvedValue = resolveStyleValue(key, value, plan);
+      if (resolvedValue) element.style[key] = resolvedValue;
+    }
+  }
+
+  function sanitizeText(value, maxLength) {
+    return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  }
+
+  function isSafeHref(value) {
+    return /^(https?:|mailto:|tel:|#|\/)/i.test(value);
+  }
+
+  function resolveAssetAttribute(value, plan) {
+    if (value.startsWith("asset:")) {
+      const assetId = value.slice("asset:".length);
+      const dataUrl = plan?.assets?.[assetId]?.dataUrl;
+      return isSafeImageDataUrl(dataUrl) ? dataUrl : "";
+    }
+
+    return isSafeImageDataUrl(value) ? value : "";
+  }
+
+  function stripPersoAttributes(root) {
+    if (!root?.querySelectorAll) return;
+    [root, ...root.querySelectorAll("*")].forEach((element) => {
+      element.removeAttribute("id");
+      for (const attribute of Array.from(element.attributes || [])) {
+        if (attribute.name.startsWith("data-perso-xxl")) {
+          element.removeAttribute(attribute.name);
+        }
+      }
+    });
+  }
+
+  function triggerElement(element) {
+    if (!element) return;
+    element.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, view: window }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+    element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+  }
+
+  function findVisibleAction(actionText) {
+    const needle = normalizeActionText(actionText);
+    if (!needle) return null;
+
+    const candidates = Array.from(document.querySelectorAll([
+      "button",
+      "a",
+      "[role='button']",
+      "[role='menuitem']",
+      "[role='option']",
+      "[role='tab']",
+      "[aria-label]"
+    ].join(",")));
+
+    return candidates.find((candidate) => {
+      if (isPersoNode(candidate) || !isElementVisible(candidate)) return false;
+      const label = normalizeActionText(candidate.getAttribute("aria-label") || candidate.textContent || candidate.getAttribute("title") || "");
+      return label === needle || label.includes(needle) || needle.includes(label);
+    }) || null;
+  }
+
+  function normalizeActionText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  function isElementVisible(element) {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      style.opacity !== "0";
+  }
+
+  function isPersoNode(node) {
+    return Boolean(
+      node?.id?.startsWith("perso-xxl") ||
+      node?.closest?.("#perso-xxl-panel, #perso-xxl-picker-overlay, [data-perso-xxl-ui], [data-perso-xxl-created], [data-perso-xxl-shortcut]")
+    );
   }
 
   function upsertStyle(id, css) {

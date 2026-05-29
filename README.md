@@ -16,7 +16,11 @@ Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies 
 - Trusted capability rules for product workflows:
   - `scrollLock`
   - `shortcutButton`, which creates an extension-owned button that clicks an existing page action.
-  - `moveElement`, which moves an existing page element to a selected destination and can be reverted.
+  - `moveElement`, which moves an existing page element to a selected destination or anchor and can be reverted.
+  - `insertElement`, which adds safe extension-owned page content from a restricted element descriptor.
+  - `cloneElement`, which duplicates an existing page element into a new location.
+  - `swapElements`, which swaps two existing page elements.
+  - `menuShortcut`, which creates a shortcut button that opens an existing menu and clicks a named menu action.
 - Remote image URL download through the background worker, converted into a safe extension asset before use as `asset:<assetId>`.
 - Background injection fallback so the command palette can open on already-loaded pages after extension reloads.
 - Saved modifications are stored per hostname + pathname and reapply when the page changes.
@@ -93,7 +97,7 @@ User prompt + optional element picks
 → Executor
 ```
 
-The user can pick one or more elements (for example, swap "this" with "this"). The AI receives the full page DOM summary plus those selections as grounding, and infers broader selectors when the prompt implies a class of elements.
+The user can pick one or more elements (for example, swap "this" with "this"). The AI receives the full page DOM summary plus those selections as grounding, including a bounded list of hidden interactive/menu-like nodes when they already exist in the DOM, and infers broader selectors when the prompt implies a class of elements.
 
 ## Transform plan shape
 
@@ -129,6 +133,14 @@ The model must return JSON like:
 ```
 
 The extension does not execute model-generated JavaScript. Agent-like behaviors should be added as validated capabilities.
+
+Structural changes are implemented as trusted capabilities rather than arbitrary HTML:
+
+- `insertElement` supports a restricted set of tags, attributes, styles, child descriptors, `asset:<assetId>` image sources, and `append`/`prepend`/`before`/`after`/`replace` placement.
+- `cloneElement` copies an existing matched element and places the clone with the same placement options.
+- `moveElement` supports `append`, `prepend`, `before`, and `after`.
+- `swapElements` exchanges two matched existing elements.
+- `menuShortcut` is for actions hidden behind menus: it creates a managed shortcut, clicks the menu opener, then clicks the visible menu item matching `actionText`.
 
 ## Dashboard and page manager
 

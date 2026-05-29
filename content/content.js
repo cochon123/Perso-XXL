@@ -748,6 +748,15 @@ function composeEnabledPlan(record) {
       if (rule.placementTargetRef) {
         nextRule.placementTargetRef = targetRefs.get(rule.placementTargetRef) || rule.placementTargetRef;
       }
+      if (rule.sourceTargetRef) {
+        nextRule.sourceTargetRef = targetRefs.get(rule.sourceTargetRef) || rule.sourceTargetRef;
+      }
+      if (rule.otherTargetRef) {
+        nextRule.otherTargetRef = targetRefs.get(rule.otherTargetRef) || rule.otherTargetRef;
+      }
+      if (rule.menuTargetRef) {
+        nextRule.menuTargetRef = targetRefs.get(rule.menuTargetRef) || rule.menuTargetRef;
+      }
       if (nextRule.styles?.backgroundImage?.startsWith?.("asset:")) {
         const assetId = nextRule.styles.backgroundImage.slice("asset:".length);
         nextRule.styles = {
@@ -755,11 +764,41 @@ function composeEnabledPlan(record) {
           backgroundImage: `asset:${prefix}_${assetId}`
         };
       }
+      if (nextRule.element) {
+        nextRule.element = remapElementAssetRefs(nextRule.element, prefix);
+      }
       return nextRule;
     }));
   });
 
   return composed;
+}
+
+function remapElementAssetRefs(element, prefix) {
+  if (!element || typeof element !== "object" || Array.isArray(element)) return element;
+
+  const next = { ...element };
+  if (next.styles?.backgroundImage?.startsWith?.("asset:")) {
+    const assetId = next.styles.backgroundImage.slice("asset:".length);
+    next.styles = {
+      ...next.styles,
+      backgroundImage: `asset:${prefix}_${assetId}`
+    };
+  }
+
+  if (next.attributes?.src?.startsWith?.("asset:")) {
+    const assetId = next.attributes.src.slice("asset:".length);
+    next.attributes = {
+      ...next.attributes,
+      src: `asset:${prefix}_${assetId}`
+    };
+  }
+
+  if (Array.isArray(next.children)) {
+    next.children = next.children.map((child) => remapElementAssetRefs(child, prefix));
+  }
+
+  return next;
 }
 
 async function saveSiteRecord(record) {

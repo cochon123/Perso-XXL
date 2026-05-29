@@ -38,7 +38,15 @@ export const TRANSFORM_SCHEMA_HINT = {
 
 export const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css", "capability"]);
 
-export const ALLOWED_CAPABILITIES = new Set(["scrollLock", "shortcutButton", "moveElement"]);
+export const ALLOWED_CAPABILITIES = new Set([
+  "scrollLock",
+  "shortcutButton",
+  "moveElement",
+  "insertElement",
+  "cloneElement",
+  "swapElements",
+  "menuShortcut"
+]);
 
 export const ALLOWED_STYLE_KEYS = new Set([
   "background",
@@ -78,3 +86,36 @@ export const ALLOWED_STYLE_KEYS = new Set([
   "transform",
   "aspectRatio"
 ]);
+
+export const ALLOWED_INSERT_TAGS = new Set([
+  "a",
+  "aside",
+  "button",
+  "div",
+  "figcaption",
+  "figure",
+  "footer",
+  "h1",
+  "h2",
+  "h3",
+  "header",
+  "img",
+  "li",
+  "nav",
+  "p",
+  "section",
+  "span",
+  "strong",
+  "ul"
+]);
+
+export const ALLOWED_INSERT_ATTRIBUTES = new Set([
+  "alt",
+  "aria-label",
+  "href",
+  "role",
+  "src",
+  "title"
+]);
+
+export const ALLOWED_PLACEMENTS = new Set(["append", "prepend", "before", "after", "replace"]);

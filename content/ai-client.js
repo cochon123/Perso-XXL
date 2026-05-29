@@ -2,7 +2,15 @@ window.PersoAiClient = (() => {
   const log = window.PersoLogger;
   const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
   const ALLOWED_RULE_TYPES = new Set(["style", "visibility", "attribute", "css", "capability"]);
-  const ALLOWED_CAPABILITIES = new Set(["scrollLock", "shortcutButton", "moveElement"]);
+  const ALLOWED_CAPABILITIES = new Set([
+    "scrollLock",
+    "shortcutButton",
+    "moveElement",
+    "insertElement",
+    "cloneElement",
+    "swapElements",
+    "menuShortcut"
+  ]);
   const ALLOWED_STYLE_KEYS = new Set([
     "background",
     "backgroundColor",
@@ -41,6 +49,29 @@ window.PersoAiClient = (() => {
     "transform",
     "aspectRatio"
   ]);
+  const ALLOWED_INSERT_TAGS = new Set([
+    "a",
+    "aside",
+    "button",
+    "div",
+    "figcaption",
+    "figure",
+    "footer",
+    "h1",
+    "h2",
+    "h3",
+    "header",
+    "img",
+    "li",
+    "nav",
+    "p",
+    "section",
+    "span",
+    "strong",
+    "ul"
+  ]);
+  const ALLOWED_INSERT_ATTRIBUTES = new Set(["alt", "aria-label", "href", "role", "src", "title"]);
+  const ALLOWED_PLACEMENTS = new Set(["append", "prepend", "before", "after", "replace"]);
 
   const TRANSFORM_SCHEMA_HINT = {
     version: "2.0",
@@ -121,13 +152,20 @@ window.PersoAiClient = (() => {
             "If a rule targets one targetRef and only needs declarations such as display: none, use type style with styles instead of type css.",
             "Do not use type css for simple property changes such as color red or font-size 16px.",
             "For hiding/removing elements, prefer type visibility with action hide, or type style with display none. Do not set styles.visibility.",
-            "Use type capability only for trusted extension-owned behaviors. The allowed capabilities are scrollLock, shortcutButton, and moveElement.",
+            "Use type capability only for trusted extension-owned behaviors. The allowed capabilities are scrollLock, shortcutButton, moveElement, insertElement, cloneElement, swapElements, and menuShortcut.",
             "For requests such as stop scrolling, prevent scrolling, or show only the first loaded item, use a capability rule with capability scrollLock instead of raw JavaScript.",
             "A scrollLock capability rule should target the page, feed, or main content area and may include options.preserveSelectors for the first item that should remain visible.",
             "For requests such as add a button, create a shortcut, move a hidden action closer, or expose an action buried in menus, prefer a shortcutButton capability instead of JavaScript.",
             "A shortcutButton rule must use targetRef for the container where the new button should appear, sourceActionTargetRef for the existing clickable element to trigger, and a short label.",
             "shortcutButton only creates extension-owned UI and dispatches a click on an already existing page element.",
-            "For requests to move an existing page element or place an existing control somewhere else, use moveElement with targetRef as the element to move and placementTargetRef as the destination container.",
+            "For requests to add new visible text, cards, badges, headers, simple buttons, or static page content, use insertElement. insertElement takes targetRef, placement append/prepend/before/after/replace, and an element descriptor with tag, text, attributes, styles, and children.",
+            "For inserted elements, use only these tags: a, aside, button, div, figcaption, figure, footer, h1, h2, h3, header, img, li, nav, p, section, span, strong, ul. Do not include HTML strings.",
+            "For inserted img elements, use attributes.src as asset:<assetId> when an attached image is available.",
+            "For requests to duplicate or reuse an existing item elsewhere, use cloneElement with sourceTargetRef for the item to copy, targetRef for the placement target, and placement append/prepend/before/after/replace.",
+            "For requests to swap two existing page elements, use swapElements with targetRef and otherTargetRef.",
+            "For requests to move an existing page element or place an existing control somewhere else, use moveElement with targetRef as the element to move, placementTargetRef as the destination or anchor, and placement append/prepend/before/after.",
+            "For actions hidden behind menus, use menuShortcut when the user names the action. menuShortcut creates an extension-owned button, clicks menuTargetRef to open the menu, then clicks the visible menu item whose text or aria-label matches actionText.",
+            "menuShortcut uses targetRef as the container where the new shortcut appears, menuTargetRef as the existing menu/opener button, actionText as the menu action label, and label as the visible shortcut label.",
             "Use only allowed style properties.",
             "If an attached image should be used, set backgroundImage to asset:<assetId>, for example asset:uploadedImage.",
             "When setting a background image, always include backgroundSize: \"cover\", backgroundPosition: \"center center\", and backgroundRepeat: \"no-repeat\"; if the user asks for a page/background theme, also use backgroundAttachment: \"fixed\" unless it targets a small component.",
@@ -146,7 +184,7 @@ window.PersoAiClient = (() => {
             selections,
             availableAssets,
             allowedRuleTypes: ["css", "style", "visibility", "attribute", "capability"],
-            allowedCapabilities: ["scrollLock", "shortcutButton", "moveElement"],
+            allowedCapabilities: Array.from(ALLOWED_CAPABILITIES),
             allowedStyleKeys: ALLOWED_STYLE_KEYS_LIST,
             schemaExample: TRANSFORM_SCHEMA_HINT,
             previousPlan,
@@ -346,6 +384,108 @@ window.PersoAiClient = (() => {
         if (!rule.placementTargetRef || !targetRefs.has(rule.placementTargetRef)) {
           errors.push(`Rule ${index} moveElement must include placementTargetRef.`);
         }
+        validatePlacement(rule, index, errors, ["append", "prepend", "before", "after"]);
+      }
+      if (rule.capability === "insertElement") {
+        if (!rule.element || typeof rule.element !== "object" || Array.isArray(rule.element)) {
+          errors.push(`Rule ${index} insertElement must include an element object.`);
+        } else {
+          validateInsertElement(rule.element, index, errors, assets);
+        }
+        validatePlacement(rule, index, errors);
+      }
+      if (rule.capability === "cloneElement") {
+        if (!rule.sourceTargetRef || !targetRefs.has(rule.sourceTargetRef)) {
+          errors.push(`Rule ${index} cloneElement must include sourceTargetRef.`);
+        }
+        validatePlacement(rule, index, errors);
+      }
+      if (rule.capability === "swapElements") {
+        if (!rule.otherTargetRef || !targetRefs.has(rule.otherTargetRef)) {
+          errors.push(`Rule ${index} swapElements must include otherTargetRef.`);
+        }
+      }
+      if (rule.capability === "menuShortcut") {
+        if (!rule.menuTargetRef || !targetRefs.has(rule.menuTargetRef)) {
+          errors.push(`Rule ${index} menuShortcut must include menuTargetRef.`);
+        }
+        if (typeof rule.actionText !== "string" || !rule.actionText.trim()) {
+          errors.push(`Rule ${index} menuShortcut must include actionText.`);
+        }
+      }
+    }
+  }
+
+  function validatePlacement(rule, index, errors, allowed = Array.from(ALLOWED_PLACEMENTS)) {
+    if (rule.placement && !allowed.includes(rule.placement)) {
+      errors.push(`Rule ${index} has unsupported placement ${rule.placement}.`);
+    }
+  }
+
+  function validateInsertElement(element, index, errors, assets = {}, depth = 0) {
+    if (depth > 4) {
+      errors.push(`Rule ${index} insertElement is nested too deeply.`);
+      return;
+    }
+
+    const tag = String(element.tag || "div").toLowerCase();
+    if (!ALLOWED_INSERT_TAGS.has(tag)) {
+      errors.push(`Rule ${index} insertElement uses unsupported tag ${tag}.`);
+    }
+
+    if (element.text !== undefined && typeof element.text !== "string") {
+      errors.push(`Rule ${index} insertElement text must be a string.`);
+    }
+
+    if (element.attributes !== undefined) {
+      if (!element.attributes || typeof element.attributes !== "object" || Array.isArray(element.attributes)) {
+        errors.push(`Rule ${index} insertElement attributes must be an object.`);
+      } else {
+        for (const [name, value] of Object.entries(element.attributes)) {
+          if (!ALLOWED_INSERT_ATTRIBUTES.has(name)) {
+            errors.push(`Rule ${index} insertElement uses unsupported attribute ${name}.`);
+          }
+          if (value !== null && typeof value !== "string") {
+            errors.push(`Rule ${index} insertElement attribute ${name} must be a string or null.`);
+          }
+          if (name === "src" && typeof value === "string") {
+            if (!value.startsWith("asset:")) {
+              errors.push(`Rule ${index} insertElement img src must use asset:<assetId>.`);
+            } else {
+              const assetId = value.slice("asset:".length);
+              if (!assets[assetId]) errors.push(`Rule ${index} insertElement references missing asset ${assetId}.`);
+            }
+          }
+        }
+      }
+    }
+
+    if (element.styles !== undefined) {
+      if (!element.styles || typeof element.styles !== "object" || Array.isArray(element.styles)) {
+        errors.push(`Rule ${index} insertElement styles must be an object.`);
+      } else {
+        for (const key of Object.keys(element.styles)) {
+          if (!ALLOWED_STYLE_KEYS.has(key)) {
+            errors.push(`Rule ${index} insertElement uses unsupported style key ${key}.`);
+          }
+        }
+        if (element.styles.backgroundImage) {
+          const value = String(element.styles.backgroundImage);
+          if (value.startsWith("asset:")) {
+            const assetId = value.slice("asset:".length);
+            if (!assets[assetId]) errors.push(`Rule ${index} insertElement references missing asset ${assetId}.`);
+          } else if (!/^none$/i.test(value)) {
+            errors.push(`Rule ${index} insertElement backgroundImage must use asset:<assetId>.`);
+          }
+        }
+      }
+    }
+
+    if (element.children !== undefined) {
+      if (!Array.isArray(element.children) || element.children.length > 8) {
+        errors.push(`Rule ${index} insertElement children must be an array with at most 8 items.`);
+      } else {
+        element.children.forEach((child) => validateInsertElement(child, index, errors, assets, depth + 1));
       }
     }
   }

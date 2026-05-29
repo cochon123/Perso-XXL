@@ -1,5 +1,6 @@
 window.PersoDomContext = (() => {
   const MAX_PAGE_NODES = 220;
+  const MAX_HIDDEN_INTERACTIVE_NODES = 80;
   const MAX_DEPTH = 10;
   const MAX_HTML_LENGTH = 1800;
   const MAX_HIERARCHY_LEVELS = 5;
@@ -27,7 +28,8 @@ window.PersoDomContext = (() => {
         height: window.innerHeight
       },
       nodeCount: nodes.length,
-      nodes
+      nodes,
+      hiddenInteractiveNodes: collectHiddenInteractiveNodes(MAX_HIDDEN_INTERACTIVE_NODES)
     };
   }
 
@@ -259,6 +261,49 @@ window.PersoDomContext = (() => {
         height: Math.round(rect.height)
       }
     };
+  }
+
+  function collectHiddenInteractiveNodes(maxNodes) {
+    const selector = [
+      "button",
+      "a",
+      "input",
+      "select",
+      "textarea",
+      "[role='button']",
+      "[role='menu']",
+      "[role='menuitem']",
+      "[role='option']",
+      "[aria-label]",
+      "[aria-haspopup]"
+    ].join(",");
+
+    const candidates = [];
+
+    for (const element of Array.from(document.body.querySelectorAll(selector))) {
+      if (candidates.length >= maxNodes) break;
+      if (isPersoNode(element) || isVisible(element)) continue;
+
+      const text = normalizeText(element.innerText || element.textContent || "");
+      const ariaLabel = element.getAttribute("aria-label");
+      const title = element.getAttribute("title");
+      if (!text && !ariaLabel && !title) continue;
+
+      candidates.push({
+        tag: element.tagName.toLowerCase(),
+        id: element.id || null,
+        classes: Array.from(element.classList || []).slice(0, 4),
+        role: element.getAttribute("role"),
+        ariaLabel,
+        title,
+        text: text.slice(0, 80),
+        ariaHaspopup: element.getAttribute("aria-haspopup"),
+        selectorHints: buildSelectorHints(element).slice(0, 4),
+        ancestorChain: getAncestorChain(element, 4)
+      });
+    }
+
+    return candidates;
   }
 
   function buildSelectorHints(element) {
