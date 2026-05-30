@@ -3,6 +3,7 @@ const CONTENT_VERSION = "0.7.0-chat-interface";
 let currentPlan = null;
 let currentSiteRecord = null;
 let applyTimer = null;
+let lastApplyResult = null;
 /** @type {HTMLElement | null} */
 let panel = null;
 let suppressMutationApplyUntil = 0;
@@ -101,6 +102,10 @@ function applyCurrentPlan() {
     ruleCount: currentPlan.rules?.length || 0
   });
   const result = window.PersoExecutor.applyPlan(currentPlan);
+  lastApplyResult = {
+    ...result,
+    appliedAt: new Date().toISOString()
+  };
   log.info("plan.apply.finished", result);
   if (result?.totalMatched === 0 && zeroMatchRetryCount < 5) {
     zeroMatchRetryCount += 1;
@@ -1163,6 +1168,7 @@ async function sendFeedback({ feedback, messageId }) {
     .find((item) => item.role === "user" && item.modificationId === message.modificationId);
   const installId = await getInstallId();
   const manifest = extensionApi.runtime?.getManifest?.();
+  const modification = record.modifications.find((item) => item.id === message.modificationId);
 
   const response = await fetch(FEEDBACK_ENDPOINT, {
     method: "POST",
@@ -1182,13 +1188,54 @@ async function sendFeedback({ feedback, messageId }) {
       installId,
       extensionVersion: manifest?.version || CONTENT_VERSION,
       metadata: {
-        source: "extension-panel"
+        source: "extension-panel",
+        contentVersion: CONTENT_VERSION,
+        messageCreatedAt: message.createdAt || null,
+        promptCreatedAt: promptMessage?.createdAt || null,
+        modification: summarizeModificationForFeedback(modification),
+        plan: summarizePlanForFeedback(modification?.plan),
+        applyResult: lastApplyResult,
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight
+        }
       }
     })
   });
 
   if (!response.ok) throw new Error(`Feedback server returned ${response.status}`);
   log.info("feedback.saved", { feedback, messageId });
+}
+
+function summarizeModificationForFeedback(modification) {
+  if (!modification) return null;
+  return {
+    id: modification.id,
+    title: modification.title,
+    enabled: modification.enabled,
+    status: modification.status,
+    createdAt: modification.createdAt,
+    updatedAt: modification.updatedAt
+  };
+}
+
+function summarizePlanForFeedback(plan) {
+  if (!plan) return null;
+  const rules = Array.isArray(plan.rules) ? plan.rules : [];
+  return {
+    version: plan.version || null,
+    site: plan.site || null,
+    ruleCount: rules.length,
+    targetRefs: Object.keys(plan.targetMap || {}),
+    assetIds: Object.keys(plan.assets || {}),
+    rules: rules.map((rule) => ({
+      id: rule?.id || null,
+      type: rule?.type || null,
+      targetRef: rule?.targetRef || null,
+      action: rule?.action || null,
+      capability: rule?.capability || null
+    }))
+  };
 }
 
 async function getInstallId() {

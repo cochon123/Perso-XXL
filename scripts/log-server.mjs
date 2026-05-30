@@ -134,7 +134,7 @@ async function handleFeedbackList(url, response) {
     `select
       id, created_at, feedback, message_id, conversation_id, modification_id,
       prompt_text, assistant_text, site_url, site_title, page_hostname, page_pathname,
-      install_id, extension_version
+      install_id, extension_version, user_agent, metadata
     from feedback_events
     order by created_at desc
     limit $1`,
@@ -298,12 +298,17 @@ function renderFeedbackDashboard() {
     .dislike { background: #ffe1df; color: #8a241c; }
     .meta { color: #76695f; font-size: 13px; }
     .url { overflow-wrap: anywhere; }
-    .text { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .debug-grid, .text { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
     .box { background: #faf7f2; border: 1px solid #eee3da; border-radius: 8px; padding: 12px; min-width: 0; }
     .box h2 { margin: 0 0 7px; font-size: 13px; color: #76695f; }
     .box p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+    .debug { margin-top: 12px; }
+    .debug summary { color: #5d5149; cursor: pointer; font-weight: 700; }
+    .debug-list { display: grid; gap: 6px; margin-top: 10px; color: #5d5149; font-size: 13px; }
+    .debug-list div { overflow-wrap: anywhere; }
+    pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .empty { padding: 28px; text-align: center; color: #76695f; background: #fff; border-radius: 8px; border: 1px solid #e0d5cb; }
-    @media (max-width: 720px) { header, .event-head { align-items: start; flex-direction: column; } .stats, .text { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) { header, .event-head { align-items: start; flex-direction: column; } .stats, .debug-grid, .text { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -351,7 +356,25 @@ function renderFeedbackDashboard() {
           '<div class="box"><h2>Prompt</h2><p>' + escapeHtml(event.prompt_text || "") + '</p></div>' +
           '<div class="box"><h2>Assistant</h2><p>' + escapeHtml(event.assistant_text || "") + '</p></div>' +
         '</div>' +
+        '<details class="debug">' +
+          '<summary>Debug details</summary>' +
+          '<div class="debug-list">' +
+            '<div><strong>Message:</strong> ' + escapeHtml(event.message_id || "") + '</div>' +
+            '<div><strong>Conversation:</strong> ' + escapeHtml(event.conversation_id || "") + '</div>' +
+            '<div><strong>Modification:</strong> ' + escapeHtml(event.modification_id || "") + '</div>' +
+            '<div><strong>Install:</strong> ' + escapeHtml(event.install_id || "") + '</div>' +
+            '<div><strong>User agent:</strong> ' + escapeHtml(event.user_agent || "") + '</div>' +
+          '</div>' +
+          '<div class="debug-grid">' +
+            '<div class="box"><h2>Metadata</h2><pre>' + escapeHtml(formatJson(event.metadata || {})) + '</pre></div>' +
+            '<div class="box"><h2>Page</h2><pre>' + escapeHtml(formatJson({ hostname: event.page_hostname, pathname: event.page_pathname, url: event.site_url, title: event.site_title })) + '</pre></div>' +
+          '</div>' +
+        '</details>' +
       '</article>';
+    }
+
+    function formatJson(value) {
+      return JSON.stringify(value || {}, null, 2);
     }
 
     function formatDate(value) {
