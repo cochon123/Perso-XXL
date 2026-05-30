@@ -63,6 +63,11 @@
   min-height: 0;
 }
 
+.preview-stack[hidden],
+.mod-focus-stack[hidden] {
+  display: none !important;
+}
+
 .preview-stack .ai-input {
   width: 100%;
   max-width: 100%;
@@ -80,6 +85,25 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 45, 122, 0.25) transparent;
+}
+
+.ai-sent-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-sent-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ai-sent-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 45, 122, 0.25);
+  border-radius: 999px;
+}
+
+.ai-sent-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 45, 122, 0.45);
 }
 
 .ai-sent-bubble {

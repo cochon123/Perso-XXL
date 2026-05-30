@@ -1178,12 +1178,10 @@ function finishLoadingSequence() {
   loadingInterval = null;
   loadingFinishTimeout = null;
 
-  // Reset composer to allow follow-up prompts instead of showing "Done!"
-  if (isEmbedded()) {
-    resetComposerAfterSuccess();
-  } else {
-    resetComposerAfterSuccess();
-  }
+  const lastUserBubble = sentList.querySelector('.perso-xxl-chat-bubble--user:last-of-type');
+  const promptText = lastUserBubble?.textContent?.replace(/\u200B/g, '').trim() || 'your request';
+  appendAssistantBubble(`Created modification: ${promptText}`);
+  resetComposerAfterSuccess();
 }
 
 function enterDoneState() {

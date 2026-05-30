@@ -136,6 +136,7 @@ function togglePanel() {
 
 function openPanel() {
   if (!panel) return;
+  panel.style.display = "";
   panel.hidden = false;
   if (focusedModId) {
     setPanelMode("mod-focus");
@@ -314,6 +315,7 @@ function createPanel() {
   const root = document.createElement("section");
   root.id = "perso-xxl-panel";
   root.hidden = true;
+  root.style.display = "none";
   root.innerHTML = createAiInputMarkup();
   return root;
 }

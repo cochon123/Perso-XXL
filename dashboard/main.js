@@ -10,6 +10,7 @@ const siteCount = document.getElementById("site-count");
 const modCount = document.getElementById("mod-count");
 const activeCount = document.getElementById("active-count");
 const THEME_STORAGE_KEY = "perso-dashboard-theme";
+const DEFAULT_FAVICON_URL = "assets/world-grid-svgrepo-com.svg";
 
 let records = [];
 let mockMode = false;
@@ -136,12 +137,29 @@ function recordMatches(record, query) {
 
 function renderRecord(record) {
   const url = record.site?.url || record.key.replace(SITE_RECORD_PREFIX, "");
+  const faviconUrl = getFaviconUrl(url);
+  const fallbackFaviconUrl = getFallbackFaviconUrl(url);
+  const favicon = faviconUrl ? `
+          <img
+            class="site-favicon"
+            src="${escapeAttr(faviconUrl)}"
+            data-fallback-src="${escapeAttr(fallbackFaviconUrl)}"
+            data-default-src="${escapeAttr(DEFAULT_FAVICON_URL)}"
+            alt=""
+            width="36"
+            height="36"
+            loading="lazy"
+            onerror="handleFaviconError(this)"
+          >` : "";
   return `
     <article class="site-card" data-record-key="${escapeAttr(record.key)}">
       <header class="site-head">
-        <div class="site-title">
-          <h2>${escapeHtml(record.site?.title || url)}</h2>
-          <p>${escapeHtml(url)}</p>
+        <div class="site-identity">
+          ${favicon}
+          <div class="site-title">
+            <h2>${escapeHtml(record.site?.title || url)}</h2>
+            <p>${escapeHtml(url)}</p>
+          </div>
         </div>
         <div class="site-actions">
           <button type="button" data-action="disable-site">Disable all</button>
@@ -153,6 +171,43 @@ function renderRecord(record) {
       </div>
     </article>
   `;
+}
+
+function handleFaviconError(img) {
+  const fallbackSrc = img.dataset.fallbackSrc || "";
+  const defaultSrc = img.dataset.defaultSrc || "";
+
+  if (fallbackSrc) {
+    img.dataset.fallbackSrc = "";
+    img.src = fallbackSrc;
+    return;
+  }
+
+  if (defaultSrc && !img.dataset.usedDefaultSrc) {
+    img.dataset.usedDefaultSrc = "true";
+    img.src = defaultSrc;
+    return;
+  }
+
+  img.hidden = true;
+}
+
+function getFaviconUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsed.hostname)}&sz=64`;
+  } catch (_error) {
+    return "";
+  }
+}
+
+function getFallbackFaviconUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return `${parsed.origin}/favicon.ico`;
+  } catch (_error) {
+    return "";
+  }
 }
 
 function renderModification(modification) {

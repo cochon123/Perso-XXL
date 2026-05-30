@@ -354,6 +354,22 @@ html[data-theme="dark"] .theme-icon--moon {
   background: var(--surface-head);
 }
 
+.site-identity {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.site-favicon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .site-title {
   min-width: 0;
 }
