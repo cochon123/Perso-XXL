@@ -1,5 +1,5 @@
 window.PersoLogger = (() => {
-  const ENDPOINT = "http://localhost:8787/log";
+  const ENDPOINT = window.PersoEnv?.LOG_ENDPOINT || "http://localhost:8787/log";
   const enabled = window.PersoEnv?.DEV_LOGS === true;
   let remoteAvailable = enabled ? null : false;
 
