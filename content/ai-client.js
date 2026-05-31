@@ -139,6 +139,8 @@ window.PersoAiClient = (() => {
             "For text styling, target the element that actually owns the visible text, or a parent wrapper whose children include that text.",
             "Prefer specific scoped selectors from hierarchyCandidates or selectorHints over broad shared classes that match many unrelated elements.",
             "User selections mark what the user pointed at. Infer broader targets when the prompt implies a class of elements, such as all video titles.",
+            "For feed filtering, ad filtering, creator/channel filtering, or requests to stop seeing a type of content, target the nearest content/card/list-item ancestor from semanticContainer or selectorHints, not just the matching badge, label, title, or channel link.",
+            "When a node exposes stable attributes such as data-testid, data-channel, data-sponsored, id, or aria-label, prefer those selectors over positional selectors.",
             "Build targetMap entries with CSS selectors that match the intended elements on this page.",
             "Use browser-standard CSS selectors only. Never use Playwright-only selectors or pseudo-classes such as :has-text(), :text(), or :contains(). Avoid :has() unless there is no simpler selector.",
             "Each targetMap entry must include selectors and may include fallbackSelectors.",
@@ -520,6 +522,24 @@ window.PersoAiClient = (() => {
 
     const normalized = { ...rule };
     const styles = normalized.styles || normalized.style;
+
+    if (normalized.type === "visibility" && !normalized.action && typeof normalized.visibility === "string") {
+      const visibility = normalized.visibility.trim().toLowerCase();
+      if (["hidden", "collapse", "none"].includes(visibility)) normalized.action = "hide";
+      if (visibility === "visible") normalized.action = "show";
+      delete normalized.visibility;
+    }
+
+    if (normalized.type === "visibility" && !normalized.action && typeof normalized.visible === "boolean") {
+      normalized.action = normalized.visible ? "show" : "hide";
+      delete normalized.visible;
+    }
+
+    if (normalized.type === "visibility" && !normalized.action && String(styles?.display || "").toLowerCase() === "none") {
+      normalized.action = "hide";
+      delete normalized.styles;
+      delete normalized.style;
+    }
 
     if (normalized.type === "visibility" && !["hide", "show", "dim"].includes(String(normalized.action || "").trim().toLowerCase())) {
       log.info("plan.rule.normalized", { index, from: `visibility:${normalized.action}`, to: "visibility:hide" });

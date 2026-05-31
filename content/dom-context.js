@@ -254,12 +254,17 @@ window.PersoDomContext = (() => {
       classes: Array.from(element.classList || []).slice(0, 4),
       role: element.getAttribute("role"),
       ariaLabel: element.getAttribute("aria-label"),
+      dataTestId: element.getAttribute("data-testid"),
+      dataChannel: element.getAttribute("data-channel"),
+      dataSponsored: element.getAttribute("data-sponsored"),
       text: text.slice(0, 80),
       childCount: element.children.length,
       bounds: {
         width: Math.round(rect.width),
         height: Math.round(rect.height)
-      }
+      },
+      selectorHints: buildSelectorHints(element).slice(0, 5),
+      semanticContainer: summarizeSemanticContainer(element)
     };
   }
 
@@ -323,15 +328,74 @@ window.PersoDomContext = (() => {
       hints.push(`[data-testid="${testId.replace(/"/g, '\\"')}"]`);
     }
 
+    const dataChannel = element.getAttribute("data-channel");
+    if (dataChannel) {
+      hints.push(`${element.tagName.toLowerCase()}[data-channel="${dataChannel.replace(/"/g, '\\"')}"]`);
+    }
+
+    const dataSponsored = element.getAttribute("data-sponsored");
+    if (dataSponsored) {
+      hints.push(`${element.tagName.toLowerCase()}[data-sponsored="${dataSponsored.replace(/"/g, '\\"')}"]`);
+    }
+
     for (const className of Array.from(element.classList || []).slice(0, 3)) {
       if (className.length > 2) {
         hints.push(`${element.tagName.toLowerCase()}.${CSS.escape(className)}`);
       }
     }
 
+    const classSelector = Array.from(element.classList || [])
+      .filter((className) => className.length > 2)
+      .slice(0, 2)
+      .map((className) => `.${CSS.escape(className)}`)
+      .join("");
+    if (classSelector) {
+      hints.push(`${element.tagName.toLowerCase()}${classSelector}`);
+    }
+
     hints.push(buildNthChildPath(element));
 
     return Array.from(new Set(hints)).slice(0, 8);
+  }
+
+  function summarizeSemanticContainer(element) {
+    const container = findSemanticContainer(element);
+    if (!container || container === element) return null;
+
+    return {
+      tag: container.tagName.toLowerCase(),
+      id: container.id || null,
+      classes: Array.from(container.classList || []).slice(0, 4),
+      role: container.getAttribute("role"),
+      ariaLabel: container.getAttribute("aria-label"),
+      dataTestId: container.getAttribute("data-testid"),
+      dataChannel: container.getAttribute("data-channel"),
+      dataSponsored: container.getAttribute("data-sponsored"),
+      text: normalizeText(container.innerText || container.textContent || "").slice(0, 120),
+      selectorHints: buildSelectorHints(container).slice(0, 5),
+      reason: "Nearest content/card ancestor. For feed filtering or hiding matching content, target this container instead of only the inner label."
+    };
+  }
+
+  function findSemanticContainer(element) {
+    let current = element?.parentElement;
+    while (current && current !== document.body) {
+      if (isSemanticContainer(current)) return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function isSemanticContainer(element) {
+    const tag = element.tagName.toLowerCase();
+    const classes = Array.from(element.classList || []);
+    return ["article", "li", "section"].includes(tag) ||
+      classes.some((className) => /card|item|result|row|tile|entry/i.test(className)) ||
+      Boolean(
+        element.getAttribute("data-channel") ||
+        element.getAttribute("data-sponsored") ||
+        element.getAttribute("data-testid")
+      );
   }
 
   function buildNthChildPath(element, maxDepth = 5) {

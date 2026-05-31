@@ -23,6 +23,9 @@ describe("Perso content runtime in happy-dom", () => {
         <article class="video-card" data-channel="Mark Rober">
           <a id="video-title" aria-label="World's Smallest Nerf Gun">World's Smallest Nerf Gun</a>
         </article>
+        <article class="video-card sponsored-card" data-sponsored="true" data-channel="CloudDesk">
+          <span class="sponsor-badge">Sponsored</span>
+        </article>
         <button style="display: none" aria-label="Hidden menu">Menu</button>
       </main>
     `;
@@ -30,9 +33,18 @@ describe("Perso content runtime in happy-dom", () => {
 
     const context = window.PersoDomContext.collectPageDom({ maxNodes: 20 });
     const selection = window.PersoDomContext.buildSelection(document.querySelector(".video-card"), "sel_1");
+    const channelNode = context.nodes.find((node) => node.id === "video-title");
+    const sponsoredNode = context.nodes.find((node) => node.dataSponsored === "true");
 
     expect(context.nodes.some((node) => node.classes.includes("video-card"))).toBe(true);
     expect(context.hiddenInteractiveNodes[0]).toMatchObject({ tag: "button", ariaLabel: "Hidden menu" });
+    expect(channelNode.selectorHints).toContain("a[aria-label=\"World's Smallest Nerf Gun\"]");
+    expect(channelNode.semanticContainer).toMatchObject({
+      tag: "article",
+      dataChannel: "Mark Rober"
+    });
+    expect(channelNode.semanticContainer.selectorHints).toContain("article[data-channel=\"Mark Rober\"]");
+    expect(sponsoredNode.selectorHints).toContain("article[data-sponsored=\"true\"]");
     expect(selection).toMatchObject({
       id: "sel_1",
       tag: "article",
@@ -81,6 +93,46 @@ describe("Perso content runtime in happy-dom", () => {
 
     expect(document.querySelector(".sponsored-card").getAttribute("style")).toBe(null);
     expect(document.querySelector(".toolbar button")).toBe(null);
+  });
+
+  it("normalizes visibility variants returned by the model", async () => {
+    window.PersoEnv = {
+      OPENROUTER_API_KEY: "test-key",
+      OPENROUTER_MODEL: "test-model"
+    };
+    window.PersoOpenRouter = {
+      buildReasoningConfig: () => ({}),
+      chatCompletion: async () => ({
+        ok: true,
+        status: 200,
+        content: JSON.stringify({
+          site: { hostname: "fixture.local" },
+          targetMap: {
+            sponsored: { selectors: [".sponsored-card"] }
+          },
+          rules: [
+            { id: "hide-visibility", type: "visibility", targetRef: "sponsored", visibility: "hidden" },
+            { id: "hide-visible", type: "visibility", targetRef: "sponsored", visible: false },
+            { id: "hide-style", type: "visibility", targetRef: "sponsored", styles: { display: "none" } }
+          ]
+        })
+      })
+    };
+    loadContentScript("content/ai-client.js");
+
+    const plan = await window.PersoAiClient.generateTransformPlan({
+      prompt: "hide sponsored",
+      pageContext: { hostname: "fixture.local", pathname: "/" },
+      pageDom: { nodes: [] },
+      selections: []
+    });
+
+    expect(plan.rules).toEqual([
+      { id: "hide-visibility", type: "visibility", targetRef: "sponsored", action: "hide" },
+      { id: "hide-visible", type: "visibility", targetRef: "sponsored", action: "hide" },
+      { id: "hide-style", type: "visibility", targetRef: "sponsored", action: "hide" }
+    ]);
+    expect(window.PersoAiClient.validateTransformPlan(plan)).toEqual({ ok: true, errors: [] });
   });
 });
 
