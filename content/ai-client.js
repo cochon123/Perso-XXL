@@ -148,6 +148,10 @@ window.PersoAiClient = (() => {
             "If a target is inferred from page patterns, set source to inferred.",
             "Rules must reference targetRef values defined in targetMap.",
             "Never put raw selectors on rules. Selectors belong in targetMap only.",
+            "When the user asks for multiple independent changes, split the response into multiple modifications so each change can be enabled, disabled, renamed, or deleted separately.",
+            "Return a top-level modifications array for multi-change requests. Each item must include a short user-facing title, a prompt describing that one change, targetMap, and rules.",
+            "When changes are tightly coupled and would not make sense independently, keep them together in one modification.",
+            "Generate concise titles that describe the outcome, for example Hide sidebar, Add save button, or Blue header links. Do not title modifications from the raw prompt unless it is already concise.",
             "If the user asks for one specific change, return only the minimal rules needed.",
             "Prefer type style with a styles object for color, size, spacing, borders, backgrounds, and other standard CSS properties.",
             "Use type css only when a raw CSS declaration block is truly necessary. css rules must include a css string field.",
@@ -179,7 +183,7 @@ window.PersoAiClient = (() => {
           content: JSON.stringify({
             task: previousPlan
               ? "Repair this transform plan so it passes validation. Return the full corrected plan."
-              : "Create a transform plan for the user's prompt.",
+              : "Create transform modification plan(s) for the user's prompt. If the prompt contains independent changes, return { modifications: [...] }. If it contains one change, return one plan object.",
             prompt,
             pageContext,
             pageDom,
@@ -189,7 +193,7 @@ window.PersoAiClient = (() => {
             allowedCapabilities: Array.from(ALLOWED_CAPABILITIES),
             allowedStyleKeys: ALLOWED_STYLE_KEYS_LIST,
             schemaExample: TRANSFORM_SCHEMA_HINT,
-            previousPlan,
+            previousPlan: sanitizePlanForPrompt(previousPlan),
             validationErrors
           })
         }
@@ -197,6 +201,71 @@ window.PersoAiClient = (() => {
     });
 
     return normalizePlan(payload, prompt, pageContext, selections);
+  }
+
+  async function generateModificationPlans(options) {
+    const payload = await requestJson({
+      taskName: options.previousPlan ? "plan-repair" : "plan-generation",
+      temperature: 0.35,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You generate safe declarative website transform plans for a browser extension.",
+            "Return only valid JSON.",
+            "Never include JavaScript, event handlers, external URLs, network requests, or arbitrary executable code.",
+            "Use the page DOM summary and user-selected elements as grounding.",
+            "When the prompt contains multiple independent requested changes, return a top-level modifications array.",
+            "Each modifications item must be independently useful and include title, prompt, targetMap, and rules.",
+            "Each title must be concise, user-facing, and describe the one change controlled by that modification.",
+            "Do not merge independent changes into one modification just because they came from the same user request.",
+            "Keep coupled rule sets together when disabling one rule without the other would break the requested outcome.",
+            "Build targetMap entries with CSS selectors that match the intended elements on this page.",
+            "Use browser-standard CSS selectors only. Never use Playwright-only selectors or pseudo-classes such as :has-text(), :text(), or :contains(). Avoid :has() unless there is no simpler selector.",
+            "Rules must reference targetRef values defined in the same modification targetMap.",
+            "Never put raw selectors on rules. Selectors belong in targetMap only.",
+            "Use only allowed rule types, capabilities, style keys, insert tags, and insert attributes.",
+            "For simple CSS property changes, use type style with styles. For hiding/removing elements, prefer visibility hide.",
+            "For inserted img elements or background images, use asset:<assetId> when an attached image is available.",
+            "Never use local filesystem paths in CSS."
+          ].join(" ")
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task: options.previousPlan
+              ? "Repair this transform plan so it passes validation. Return the full corrected plan."
+              : "Create independently manageable transform modification plan(s) for the user's prompt.",
+            prompt: options.prompt,
+            pageContext: options.pageContext,
+            pageDom: options.pageDom,
+            selections: options.selections || [],
+            availableAssets: options.availableAssets || [],
+            allowedRuleTypes: ["css", "style", "visibility", "attribute", "capability"],
+            allowedCapabilities: Array.from(ALLOWED_CAPABILITIES),
+            allowedStyleKeys: ALLOWED_STYLE_KEYS_LIST,
+            schemaExample: {
+              modifications: [
+                {
+                  title: "Hide sidebar",
+                  prompt: "Hide the sidebar",
+                  ...TRANSFORM_SCHEMA_HINT
+                },
+                {
+                  title: "Blue action button",
+                  prompt: "Make the action button blue",
+                  ...TRANSFORM_SCHEMA_HINT
+                }
+              ]
+            },
+            previousPlan: sanitizePlanForPrompt(options.previousPlan),
+            validationErrors: options.validationErrors || []
+          })
+        }
+      ]
+    });
+
+    return normalizeModificationPlans(payload, options.prompt, options.pageContext, options.selections || []);
   }
 
   async function requestJson({ taskName, messages, temperature }) {
@@ -213,8 +282,11 @@ window.PersoAiClient = (() => {
       taskName,
       model,
       messageCount: messages.length,
-      reasoning: reasoningConfig
+      reasoning: reasoningConfig,
+      inputLength: JSON.stringify(messages).length
     });
+
+    assertNoInlineAssetData(messages);
 
     const startedAt = performance.now();
     const result = await window.PersoOpenRouter.chatCompletion({
@@ -288,6 +360,39 @@ window.PersoAiClient = (() => {
     const result = { ok: errors.length === 0, errors };
     log.info("plan.validation.finished", result);
     return result;
+  }
+
+  function sanitizePlanForPrompt(plan) {
+    if (!plan || typeof plan !== "object" || Array.isArray(plan)) return plan;
+    const clone = JSON.parse(JSON.stringify(plan));
+    stripInlineAssetData(clone);
+    return clone;
+  }
+
+  function stripInlineAssetData(value) {
+    if (!value || typeof value !== "object") return;
+
+    if (Array.isArray(value)) {
+      value.forEach(stripInlineAssetData);
+      return;
+    }
+
+    delete value.dataUrl;
+    delete value.base64;
+    delete value.bytes;
+    delete value.file;
+    delete value.blob;
+
+    for (const child of Object.values(value)) {
+      stripInlineAssetData(child);
+    }
+  }
+
+  function assertNoInlineAssetData(messages) {
+    const serialized = JSON.stringify(messages);
+    if (/data:[^;,]+(?:;[^,]+)*;base64,/i.test(serialized)) {
+      throw new Error("Refusing to send inline asset data to OpenRouter.");
+    }
   }
 
   function validateTargetMap(targetMap, errors, selections) {
@@ -517,6 +622,37 @@ window.PersoAiClient = (() => {
     };
   }
 
+  function normalizeModificationPlans(payload, prompt, pageContext, selections) {
+    const rawItems = Array.isArray(payload?.modifications)
+      ? payload.modifications
+      : Array.isArray(payload?.plans)
+        ? payload.plans
+        : [payload];
+
+    return rawItems
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => {
+        const planSource = item.plan && typeof item.plan === "object" ? item.plan : item;
+        const itemPrompt = item.prompt || item.sourcePrompt || planSource.sourcePrompt || prompt;
+        const plan = normalizePlan({
+          ...planSource,
+          sourcePrompt: itemPrompt
+        }, itemPrompt, pageContext, selections);
+        plan.title = sanitizeTitle(item.title || plan.title || plan.name || itemPrompt, index);
+        return plan;
+      });
+  }
+
+  function sanitizeTitle(value, index = 0) {
+    const fallback = index ? `Modification ${index + 1}` : "Modification";
+    const title = String(value || fallback)
+      .replace(/\s+/g, " ")
+      .replace(/[.?!]+$/g, "")
+      .trim();
+    if (!title) return fallback;
+    return title.length > 56 ? `${title.slice(0, 53)}...` : title;
+  }
+
   function normalizeRule(rule, index) {
     if (!rule || typeof rule !== "object") return [rule];
 
@@ -652,5 +788,5 @@ window.PersoAiClient = (() => {
 
   const ALLOWED_STYLE_KEYS_LIST = Array.from(ALLOWED_STYLE_KEYS);
 
-  return { generateTransformPlan, validateTransformPlan };
+  return { generateTransformPlan, generateModificationPlans, validateTransformPlan };
 })();

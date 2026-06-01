@@ -134,6 +134,130 @@ describe("Perso content runtime in happy-dom", () => {
     ]);
     expect(window.PersoAiClient.validateTransformPlan(plan)).toEqual({ ok: true, errors: [] });
   });
+
+  it("strips inline asset data from repair prompts", async () => {
+    let requestMessages = null;
+    window.PersoEnv = {
+      OPENROUTER_API_KEY: "test-key",
+      OPENROUTER_MODEL: "test-model"
+    };
+    window.PersoOpenRouter = {
+      buildReasoningConfig: () => ({}),
+      chatCompletion: async ({ messages }) => {
+        requestMessages = messages;
+        return {
+          ok: true,
+          status: 200,
+          content: JSON.stringify({
+            site: { hostname: "fixture.local" },
+            targetMap: {
+              page: { selectors: ["body"] }
+            },
+            rules: [
+              {
+                id: "set-background",
+                type: "style",
+                targetRef: "page",
+                styles: {
+                  backgroundImage: "asset:uploadedImage",
+                  backgroundSize: "cover",
+                  backgroundPosition: "center center",
+                  backgroundRepeat: "no-repeat"
+                }
+              }
+            ]
+          })
+        };
+      }
+    };
+    loadContentScript("content/ai-client.js");
+
+    await window.PersoAiClient.generateTransformPlan({
+      prompt: "repair background image",
+      pageContext: { hostname: "fixture.local", pathname: "/" },
+      pageDom: { nodes: [] },
+      selections: [],
+      availableAssets: [{ assetId: "uploadedImage", name: "JapanSwans.jpg", type: "image/jpeg" }],
+      previousPlan: {
+        site: { hostname: "fixture.local" },
+        assets: {
+          uploadedImage: {
+            type: "image/jpeg",
+            name: "JapanSwans.jpg",
+            dataUrl: "data:image/jpeg;base64,THIS_SHOULD_NOT_BE_SENT"
+          }
+        },
+        targetMap: {
+          page: { selectors: ["body"] }
+        },
+        rules: [
+          {
+            id: "bad-background",
+            type: "style",
+            targetRef: "page",
+            styles: { backgroundImage: "JapanSwans.jpg" }
+          }
+        ]
+      },
+      validationErrors: ["Rule 0 backgroundImage must use asset:<assetId>."]
+    });
+
+    const serialized = JSON.stringify(requestMessages);
+    expect(serialized).not.toContain("THIS_SHOULD_NOT_BE_SENT");
+    expect(serialized).not.toContain("data:image/jpeg;base64");
+    expect(serialized).toContain("JapanSwans.jpg");
+    expect(serialized).toContain("uploadedImage");
+  });
+
+  it("normalizes multiple model modifications into separate titled plans", async () => {
+    window.PersoEnv = {
+      OPENROUTER_API_KEY: "test-key",
+      OPENROUTER_MODEL: "test-model"
+    };
+    window.PersoOpenRouter = {
+      buildReasoningConfig: () => ({}),
+      chatCompletion: async () => ({
+        ok: true,
+        status: 200,
+        content: JSON.stringify({
+          modifications: [
+            {
+              title: "Hide sidebar",
+              prompt: "Hide the sidebar",
+              targetMap: {
+                sidebar: { selectors: [".sidebar"] }
+              },
+              rules: [
+                { id: "hide-sidebar", type: "visibility", targetRef: "sidebar", action: "hide" }
+              ]
+            },
+            {
+              title: "Blue button",
+              prompt: "Make the button blue",
+              targetMap: {
+                button: { selectors: [".primary-button"] }
+              },
+              rules: [
+                { id: "blue-button", type: "style", targetRef: "button", styles: { backgroundColor: "blue" } }
+              ]
+            }
+          ]
+        })
+      })
+    };
+    loadContentScript("content/ai-client.js");
+
+    const plans = await window.PersoAiClient.generateModificationPlans({
+      prompt: "hide the sidebar and make the button blue",
+      pageContext: { hostname: "fixture.local", pathname: "/" },
+      pageDom: { nodes: [] },
+      selections: []
+    });
+
+    expect(plans.map((plan) => plan.title)).toEqual(["Hide sidebar", "Blue button"]);
+    expect(plans.map((plan) => plan.sourcePrompt)).toEqual(["Hide the sidebar", "Make the button blue"]);
+    expect(plans.every((plan) => window.PersoAiClient.validateTransformPlan(plan).ok)).toBe(true);
+  });
 });
 
 function loadContentScript(relativePath) {

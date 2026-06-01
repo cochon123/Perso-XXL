@@ -512,69 +512,54 @@ async function generateAndApplyPlan({ prompt, tokens }) {
 
   const summaries = summariesFromUploaded(selectedAsset);
 
-  let plan = await window.PersoAiClient.generateTransformPlan({
+  let plans = await generatePlansForRequest({
     prompt,
     pageContext,
     pageDom,
     selections,
-    availableAssets: summaries
+    availableAssets: summaries,
+    selectedAsset
   });
-  plan = attachAssetsToPlan(plan, selectedAsset);
 
   log.info("generation.received", {
-    site: plan.site,
-    ruleCount: plan.rules?.length || 0,
-    targetRefs: Object.keys(plan.targetMap || {})
+    planCount: plans.length,
+    ruleCount: plans.reduce((count, plan) => count + (plan.rules?.length || 0), 0),
+    targetRefs: plans.flatMap((plan) => Object.keys(plan.targetMap || {}))
   });
 
-  let validation = window.PersoAiClient.validateTransformPlan(plan);
-  if (!validation.ok) {
-    log.warn("generation.validation.failed", { errors: validation.errors });
-    log.info("generation.repair.started");
+  plans = await validateAndRepairPlans({
+    plans,
+    prompt,
+    pageContext,
+    pageDom,
+    selections,
+    summaries,
+    selectedAsset
+  });
 
-    plan = await window.PersoAiClient.generateTransformPlan({
-      prompt,
-      pageContext,
-      pageDom,
-      selections,
-      availableAssets: summaries,
-      previousPlan: plan,
-      validationErrors: validation.errors
-    });
-    plan = attachAssetsToPlan(plan, selectedAsset);
+  log.info("generation.validation.passed", { planCount: plans.length });
 
-    validation = window.PersoAiClient.validateTransformPlan(plan);
-    if (!validation.ok) {
-      log.warn("generation.repair.failed", { errors: validation.errors });
-      throw new Error(`Generated plan failed validation: ${validation.errors.join(" ")}`);
-    }
-
-    log.info("generation.repair.passed", {
-      ruleCount: plan.rules?.length || 0,
-      targetRefs: Object.keys(plan.targetMap || {})
-    });
-  }
-
-  log.info("generation.validation.passed");
-
-  const modification = buildModification({ prompt, plan });
+  const modifications = plans.map((plan) => buildModification({
+    prompt: plan.sourcePrompt || prompt,
+    plan,
+    title: plan.title
+  }));
   currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
-  currentSiteRecord.modifications.push(modification);
-  const userMessage = {
+  currentSiteRecord.modifications.push(...modifications);
+  currentSiteRecord.conversations.push({
     id: createId("msg"),
     role: "user",
     text: prompt,
     createdAt: new Date().toISOString(),
-    modificationId: modification.id
-  };
-  const assistantMessage = {
+    modificationIds: modifications.map((modification) => modification.id)
+  });
+  currentSiteRecord.conversations.push(...modifications.map((modification) => ({
     id: createId("msg"),
     role: "assistant",
     text: `Created modification: ${modification.title}`,
     createdAt: new Date().toISOString(),
     modificationId: modification.id
-  };
-  currentSiteRecord.conversations.push(userMessage, assistantMessage);
+  })));
   currentSiteRecord.lastUpdatedAt = new Date().toISOString();
   currentPlan = composeEnabledPlan(currentSiteRecord);
   zeroMatchRetryCount = 0;
@@ -585,7 +570,71 @@ async function generateAndApplyPlan({ prompt, tokens }) {
   log.info("storage.saved", { key: getSiteRecordKey(), hasProfileNotes: Boolean(prompt), modificationCount: currentSiteRecord.modifications.length });
   refreshConversationPreview();
   applyCurrentPlan();
-  log.info("panel.task.finished", { message: "Plan generated." });
+  log.info("panel.task.finished", { message: "Plan generated.", modificationCount: modifications.length });
+}
+
+async function generatePlansForRequest(options) {
+  if (typeof window.PersoAiClient.generateModificationPlans === "function") {
+    const plans = await window.PersoAiClient.generateModificationPlans(options);
+    if (plans.length) return plans.map((plan) => attachAssetsToPlan(plan, options.selectedAsset));
+  }
+
+  const plan = await window.PersoAiClient.generateTransformPlan(options);
+  return [attachAssetsToPlan(plan, options.selectedAsset)];
+}
+
+async function validateAndRepairPlans({
+  plans,
+  prompt,
+  pageContext,
+  pageDom,
+  selections,
+  summaries,
+  selectedAsset
+}) {
+  const repaired = [];
+
+  for (const plan of plans) {
+    const originalTitle = plan.title;
+    let nextPlan = attachAssetsToPlan(plan, selectedAsset);
+    let validation = window.PersoAiClient.validateTransformPlan(nextPlan);
+    if (!validation.ok) {
+      log.warn("generation.validation.failed", { title: nextPlan.title, errors: validation.errors });
+      log.info("generation.repair.started", { title: nextPlan.title });
+
+      nextPlan = await window.PersoAiClient.generateTransformPlan({
+        prompt: nextPlan.sourcePrompt || prompt,
+        pageContext,
+        pageDom,
+        selections,
+        availableAssets: summaries,
+        previousPlan: nextPlan,
+        validationErrors: validation.errors
+      });
+      nextPlan = attachAssetsToPlan(nextPlan, selectedAsset);
+      nextPlan.title = nextPlan.title || originalTitle;
+
+      validation = window.PersoAiClient.validateTransformPlan(nextPlan);
+      if (!validation.ok) {
+        log.warn("generation.repair.failed", { title: nextPlan.title, errors: validation.errors });
+        throw new Error(`Generated plan failed validation: ${validation.errors.join(" ")}`);
+      }
+
+      log.info("generation.repair.passed", {
+        title: nextPlan.title,
+        ruleCount: nextPlan.rules?.length || 0,
+        targetRefs: Object.keys(nextPlan.targetMap || {})
+      });
+    }
+
+    repaired.push(nextPlan);
+  }
+
+  if (!repaired.length) {
+    throw new Error("The AI did not return any modification plans.");
+  }
+
+  return repaired;
 }
 
 async function revertAppliedPlan() {
@@ -708,7 +757,7 @@ function buildModification({ prompt, plan, title }) {
   const now = new Date().toISOString();
   return {
     id: createId("mod"),
-    title: title || titleFromPrompt(prompt),
+    title: title || plan.title || titleFromPrompt(prompt),
     enabled: true,
     sourcePrompt: prompt,
     plan,
@@ -1154,6 +1203,10 @@ async function handleFeedbackClick(event) {
     log.warn("feedback.save.failed", { error: error.message || String(error), feedback, messageId });
     window.PersoAiBar?.toast?.("Feedback saved locally");
   }
+
+  if (feedback === "dislike") {
+    await disableModificationForFeedback(messageId);
+  }
 }
 
 async function sendFeedback({ feedback, messageId }) {
@@ -1165,7 +1218,11 @@ async function sendFeedback({ feedback, messageId }) {
 
   const messageIndex = record.conversations.findIndex((item) => item.id === messageId);
   const promptMessage = [...record.conversations.slice(0, messageIndex)].reverse()
-    .find((item) => item.role === "user" && item.modificationId === message.modificationId);
+    .find((item) => item.role === "user" && (
+      item.modificationId === message.modificationId ||
+      item.modificationIds?.includes?.(message.modificationId)
+    )) || [...record.conversations.slice(0, messageIndex)].reverse()
+    .find((item) => item.role === "user");
   const installId = await getInstallId();
   const manifest = extensionApi.runtime?.getManifest?.();
   const modification = record.modifications.find((item) => item.id === message.modificationId);
@@ -1205,6 +1262,33 @@ async function sendFeedback({ feedback, messageId }) {
 
   if (!response.ok) throw new Error(`Feedback server returned ${response.status}`);
   log.info("feedback.saved", { feedback, messageId });
+}
+
+async function disableModificationForFeedback(messageId) {
+  const record = normalizeSiteRecord(currentSiteRecord);
+  const message = messageId
+    ? record.conversations.find((item) => item.id === messageId)
+    : [...record.conversations].reverse().find((item) => item.role === "assistant");
+  const modificationId = message?.role === "assistant" ? message.modificationId : null;
+  if (!modificationId) return;
+
+  const modification = record.modifications.find((item) => item.id === modificationId);
+  if (!modification || modification.enabled === false) return;
+
+  try {
+    await setModificationEnabled(modificationId, false);
+    if (focusedModId === modificationId) {
+      renderModificationPreview(getFocusedModification());
+    }
+    window.PersoAiBar?.toast?.("Modification disabled");
+    log.info("feedback.dislike.disabled_modification", { messageId, modificationId });
+  } catch (error) {
+    log.warn("feedback.dislike.disable_failed", {
+      error: error.message || String(error),
+      messageId,
+      modificationId
+    });
+  }
 }
 
 function summarizeModificationForFeedback(modification) {

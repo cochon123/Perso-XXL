@@ -1184,6 +1184,15 @@ function finishLoadingSequence() {
   resetComposerAfterSuccess();
 }
 
+function finishEmbeddedLoadingSequence() {
+  if (!isLoading) return;
+  clearInterval(loadingInterval);
+  clearTimeout(loadingFinishTimeout);
+  loadingInterval = null;
+  loadingFinishTimeout = null;
+  resetComposerAfterSuccess();
+}
+
 function enterDoneState() {
   isLoading = false;
   isDone = true;
@@ -1383,7 +1392,7 @@ sendBtn.addEventListener('click', () => {
   if (isEmbedded()) {
     enterLoadingState(snapshot, { autoFinish: false });
     hostApi().onSend({ prompt, tokens })
-      .then(() => finishLoadingSequence())
+      .then(() => finishEmbeddedLoadingSequence())
       .catch((error) => abortLoadingState(error.message || String(error), { snapshot, tokens }));
     return;
   }
