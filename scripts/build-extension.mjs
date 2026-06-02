@@ -38,17 +38,25 @@ if (requestedTarget && !targets[requestedTarget]) {
 for (const [browser, target] of selectedTargets) {
   const outPath = path.join(repoRoot, target.outDir);
 
-  await rm(outPath, { recursive: true, force: true });
-  await mkdir(outPath, { recursive: true });
+  try {
+    await rm(outPath, { recursive: true, force: true });
+    await mkdir(outPath, { recursive: true });
 
-  for (const relativePath of extensionPaths) {
-    await cp(path.join(repoRoot, relativePath), path.join(outPath, relativePath), {
-      recursive: true
-    });
+    for (const relativePath of extensionPaths) {
+      await cp(path.join(repoRoot, relativePath), path.join(outPath, relativePath), {
+        recursive: true
+      });
+    }
+
+    await cp(path.join(repoRoot, target.manifest), path.join(outPath, "manifest.json"));
+    await writeFile(path.join(outPath, "BROWSER_TARGET"), `${browser}\n`);
+
+    console.log(`${browser} extension built at ${target.outDir}`);
+  } catch (error) {
+    console.error(
+      `Failed to build ${browser} extension from ${target.manifest} to ${target.outDir}:`
+    );
+    console.error(error?.stack || error);
+    process.exit(1);
   }
-
-  await cp(path.join(repoRoot, target.manifest), path.join(outPath, "manifest.json"));
-  await writeFile(path.join(outPath, "BROWSER_TARGET"), `${browser}\n`);
-
-  console.log(`${browser} extension built at ${target.outDir}`);
 }

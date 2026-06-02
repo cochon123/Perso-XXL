@@ -757,6 +757,16 @@ function removeTokenElement(token) {
   if (prev?.nodeType === Node.TEXT_NODE && prev.textContent === '\u200B') prev.remove();
 }
 
+function getTokensIntersectingRange(range) {
+  return Array.from(promptEditor.querySelectorAll('.ai-input__token')).filter((token) => {
+    try {
+      return range.intersectsNode(token);
+    } catch {
+      return false;
+    }
+  });
+}
+
 function getAdjacentToken(direction) {
   const sel = window.getSelection();
   if (!sel?.rangeCount || !sel.isCollapsed) return null;
@@ -836,7 +846,9 @@ function deleteEditorText(direction) {
   if (!promptEditor.contains(range.commonAncestorContainer)) return false;
 
   if (!sel.isCollapsed) {
+    const removedTokens = getTokensIntersectingRange(range);
     range.deleteContents();
+    removedTokens.forEach(removeTokenElement);
     range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
@@ -1400,6 +1412,7 @@ promptEditor.addEventListener('keydown', (e) => {
       e.preventDefault();
       removeTokenElement(selected);
       syncEditorEmptyState();
+      updateLayoutMode();
       updateSendState();
       return;
     }
@@ -1408,6 +1421,7 @@ promptEditor.addEventListener('keydown', (e) => {
       e.preventDefault();
       removeTokenElement(before);
       syncEditorEmptyState();
+      updateLayoutMode();
       updateSendState();
       return;
     }
@@ -1426,6 +1440,7 @@ promptEditor.addEventListener('keydown', (e) => {
       e.preventDefault();
       removeTokenElement(selected);
       syncEditorEmptyState();
+      updateLayoutMode();
       updateSendState();
       return;
     }
@@ -1434,6 +1449,7 @@ promptEditor.addEventListener('keydown', (e) => {
       e.preventDefault();
       removeTokenElement(after);
       syncEditorEmptyState();
+      updateLayoutMode();
       updateSendState();
       return;
     }

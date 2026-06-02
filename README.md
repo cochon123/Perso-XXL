@@ -59,6 +59,8 @@ Build the Firefox extension files:
 npm run build:firefox
 ```
 
+This regenerates `manifest-firefox.json` from `manifest.json` before packaging.
+
 Start the dev log terminal:
 
 ```sh

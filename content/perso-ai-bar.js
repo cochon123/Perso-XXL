@@ -246,6 +246,16 @@
     if (prev?.nodeType === Node.TEXT_NODE && prev.textContent === "\u200B") prev.remove();
   }
 
+  function getTokensIntersectingRange(range) {
+    return Array.from(promptEditor.querySelectorAll(".ai-input__token")).filter((tok) => {
+      try {
+        return range.intersectsNode(tok);
+      } catch {
+        return false;
+      }
+    });
+  }
+
   function getAdjacentToken(direction) {
     const sel = window.getSelection();
     if (!sel?.rangeCount || !sel.isCollapsed) return null;
@@ -325,7 +335,9 @@
     if (!promptEditor.contains(range.commonAncestorContainer)) return false;
 
     if (!sel.isCollapsed) {
+      const removedTokens = getTokensIntersectingRange(range);
       range.deleteContents();
+      removedTokens.forEach(removeTokenElement);
       range.collapse(true);
       sel.removeAllRanges();
       sel.addRange(range);
@@ -922,6 +934,7 @@
           e.preventDefault();
           removeTokenElement(selected);
           syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
           return;
         }
@@ -930,6 +943,7 @@
           e.preventDefault();
           removeTokenElement(before);
           syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
           return;
         }
@@ -948,6 +962,7 @@
           e.preventDefault();
           removeTokenElement(selTok);
           syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
           return;
         }
@@ -956,6 +971,7 @@
           e.preventDefault();
           removeTokenElement(after);
           syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
           return;
         }
