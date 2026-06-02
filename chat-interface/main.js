@@ -757,6 +757,11 @@ function removeTokenElement(token) {
   if (prev?.nodeType === Node.TEXT_NODE && prev.textContent === '\u200B') prev.remove();
 }
 
+/**
+ * Find a non-editable token element immediately adjacent to the collapsed caret inside the prompt editor.
+ * @param {'before'|'after'} direction - Which side of the caret to check: `'before'` checks the node immediately to the left, `'after'` checks the node immediately to the right.
+ * @returns {Element|null} The adjacent `.ai-input__token` element when one is directly next to the caret in the specified direction, or `null` if none is found or the selection is not a collapsed caret inside the editor.
+ */
 function getAdjacentToken(direction) {
   const sel = window.getSelection();
   if (!sel?.rangeCount || !sel.isCollapsed) return null;
@@ -800,6 +805,11 @@ function getAdjacentToken(direction) {
   return null;
 }
 
+/**
+ * Get the token element that contains or is directly selected by the current selection.
+ *
+ * @returns {Element|null} The `.ai-input__token` element containing the selection, or `null` if the selection is not inside a token.
+ */
 function getSelectedToken() {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return null;
@@ -808,6 +818,11 @@ function getSelectedToken() {
   return node?.parentElement?.closest?.('.ai-input__token') || null;
 }
 
+/**
+ * Place the DOM caret (collapsed selection) inside a text node at the given character index.
+ * @param {Text} textNode - The text node to position the caret inside.
+ * @param {number} offset - Character index within the node; values < 0 are treated as 0 and values greater than the node length are treated as the node length.
+ */
 function placeCaretInTextNode(textNode, offset) {
   const range = document.createRange();
   range.setStart(textNode, Math.max(0, Math.min(offset, textNode.textContent?.length || 0)));
@@ -818,6 +833,14 @@ function placeCaretInTextNode(textNode, offset) {
   sel?.addRange(range);
 }
 
+/**
+ * Delete a single character from a text node adjacent to a caret position and move the caret into the text node.
+ *
+ * @param {Text} textNode - The text node to modify.
+ * @param {number} offset - The caret offset within the text node where deletion is anchored.
+ * @param {'before'|'after'} direction - Whether to delete the character before the offset (`'before'`) or at the offset (`'after'`).
+ * @returns {boolean} `true` if a character was deleted and the caret repositioned, `false` if the offset was out of range and no deletion occurred.
+ */
 function deleteTextNodeChar(textNode, offset, direction) {
   const text = textNode.textContent || '';
   const index = direction === 'before' ? offset - 1 : offset;
@@ -828,6 +851,11 @@ function deleteTextNodeChar(textNode, offset, direction) {
   return true;
 }
 
+/**
+ * Delete the current selection, or a single character immediately before or after the caret, within the prompt editor.
+ * @param {'before'|'after'} direction - Whether to delete the character before ('before') or after ('after') the caret when the selection is collapsed.
+ * @returns {boolean} `true` if content was deleted, `false` if nothing was deleted or the caret/selection was outside the prompt editor.
+ */
 function deleteEditorText(direction) {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return false;
@@ -869,6 +897,14 @@ function deleteEditorText(direction) {
   return false;
 }
 
+/**
+ * Clear the editor content and token state.
+ *
+ * If `revokeAssets` is true, revokes any object URLs for stored image tokens before clearing.
+ *
+ * @param {Object} [options] - Options for clearing behavior.
+ * @param {boolean} [options.revokeAssets=true] - Revoke object URLs associated with image tokens.
+ */
 function clearEditor({ revokeAssets = true } = {}) {
   if (revokeAssets) {
     tokenStore.forEach((stored) => {
