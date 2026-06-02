@@ -246,6 +246,16 @@
     if (prev?.nodeType === Node.TEXT_NODE && prev.textContent === "\u200B") prev.remove();
   }
 
+  function getTokensIntersectingRange(range) {
+    return Array.from(promptEditor.querySelectorAll(".ai-input__token")).filter((tok) => {
+      try {
+        return range.intersectsNode(tok);
+      } catch {
+        return false;
+      }
+    });
+  }
+
   function getAdjacentToken(direction) {
     const sel = window.getSelection();
     if (!sel?.rangeCount || !sel.isCollapsed) return null;
@@ -255,6 +265,8 @@
 
     if (direction === "before") {
       if (anchorNode.nodeType === Node.TEXT_NODE) {
+        const text = anchorNode.textContent || "";
+        if (text === "\u200B" && anchorOffset > 0) return null;
         if (anchorOffset === 0) {
           let prev = anchorNode.previousSibling;
           if (prev?.nodeType === Node.TEXT_NODE && prev.textContent === "\u200B") prev = prev.previousSibling;
@@ -271,6 +283,7 @@
     if (direction === "after") {
       if (anchorNode.nodeType === Node.TEXT_NODE) {
         const text = anchorNode.textContent || "";
+        if (text === "\u200B" && anchorOffset < text.length) return null;
         if (anchorOffset >= text.length) {
           const next = anchorNode.nextSibling;
           if (next?.nodeType === Node.ELEMENT_NODE && next.classList?.contains("ai-input__token")) return next;
@@ -292,6 +305,69 @@
     const node = sel.anchorNode;
     if (node?.nodeType === Node.ELEMENT_NODE && node.classList?.contains("ai-input__token")) return node;
     return node?.parentElement?.closest?.(".ai-input__token") || null;
+  }
+
+  function placeCaretInTextNode(textNode, offset) {
+    const range = document.createRange();
+    range.setStart(textNode, Math.max(0, Math.min(offset, textNode.textContent?.length || 0)));
+    range.collapse(true);
+
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+
+  function deleteTextNodeChar(textNode, offset, direction) {
+    const text = textNode.textContent || "";
+    const index = direction === "before" ? offset - 1 : offset;
+    if (index < 0 || index >= text.length) return false;
+
+    textNode.textContent = text.slice(0, index) + text.slice(index + 1);
+    placeCaretInTextNode(textNode, index);
+    return true;
+  }
+
+  function deleteEditorText(direction) {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount) return false;
+
+    const range = sel.getRangeAt(0);
+    if (!promptEditor.contains(range.commonAncestorContainer)) return false;
+
+    if (!sel.isCollapsed) {
+      const removedTokens = getTokensIntersectingRange(range);
+      range.deleteContents();
+      removedTokens.forEach(removeTokenElement);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    }
+
+    const { anchorNode, anchorOffset } = sel;
+    if (!anchorNode || !promptEditor.contains(anchorNode)) return false;
+
+    if (anchorNode.nodeType === Node.TEXT_NODE) {
+      if (deleteTextNodeChar(anchorNode, anchorOffset, direction)) return true;
+
+      const sibling = direction === "before" ? anchorNode.previousSibling : anchorNode.nextSibling;
+      if (sibling?.nodeType === Node.TEXT_NODE) {
+        const offset = direction === "before" ? sibling.textContent?.length || 0 : 0;
+        return deleteTextNodeChar(sibling, offset, direction);
+      }
+
+      return false;
+    }
+
+    if (anchorNode !== promptEditor) return false;
+
+    const child = promptEditor.childNodes[direction === "before" ? anchorOffset - 1 : anchorOffset];
+    if (child?.nodeType === Node.TEXT_NODE) {
+      const offset = direction === "before" ? child.textContent?.length || 0 : 0;
+      return deleteTextNodeChar(child, offset, direction);
+    }
+
+    return false;
   }
 
   function serializeEditor() {
@@ -858,6 +934,7 @@
           e.preventDefault();
           removeTokenElement(selected);
           syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
           return;
         }
@@ -866,6 +943,14 @@
           e.preventDefault();
           removeTokenElement(before);
           syncEditorEmptyState();
+          updateLayoutMode();
+          updateSendState();
+          return;
+        }
+        if (deleteEditorText("before")) {
+          e.preventDefault();
+          syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
         }
         return;
@@ -877,6 +962,7 @@
           e.preventDefault();
           removeTokenElement(selTok);
           syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
           return;
         }
@@ -885,6 +971,14 @@
           e.preventDefault();
           removeTokenElement(after);
           syncEditorEmptyState();
+          updateLayoutMode();
+          updateSendState();
+          return;
+        }
+        if (deleteEditorText("after")) {
+          e.preventDefault();
+          syncEditorEmptyState();
+          updateLayoutMode();
           updateSendState();
         }
       }

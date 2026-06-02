@@ -4,6 +4,10 @@
   "description": "Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies AI-personalized website layout plans through OpenRouter.",
   "type": "module",
   "scripts": {
+    "build:manifest:firefox": "node scripts/build-manifest.mjs",
+    "build:chromium": "node scripts/build-extension.mjs chromium",
+    "build:firefox": "npm run build:manifest:firefox && node scripts/build-extension.mjs firefox",
+    "build": "npm run build:manifest:firefox && node scripts/build-extension.mjs",
     "dev:server": "node scripts/log-server.mjs",
     "test": "vitest run"
   },

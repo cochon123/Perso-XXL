@@ -6,6 +6,12 @@ const manifest = JSON.parse(
 
 const firefox = structuredClone(manifest);
 
+firefox.browser_specific_settings = {
+  gecko: {
+    id: "perso-xxl@local"
+  }
+};
+
 firefox.background = {
   scripts: [manifest.background.service_worker]
 };
