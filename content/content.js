@@ -869,6 +869,7 @@ async function setModificationEnabled(id, enabled) {
       ? { ...modification, enabled, updatedAt: new Date().toISOString() }
       : modification
   ));
+  updateAssistantFeedbackForModification(id, enabled ? "like" : "dislike");
   currentSiteRecord.lastUpdatedAt = new Date().toISOString();
   await saveSiteRecord(currentSiteRecord);
   currentPlan = composeEnabledPlan(currentSiteRecord);
@@ -1004,7 +1005,20 @@ function attachModFocusInteractions() {
     if (!focusedModId) return;
     const modification = getFocusedModification();
     if (!modification) return;
-    await setModificationEnabled(focusedModId, modification.enabled === false);
+    const enabled = modification.enabled === false;
+    await setModificationEnabled(focusedModId, enabled);
+    const message = findAssistantMessageForModification(focusedModId);
+    if (message) {
+      try {
+        await sendFeedback({ feedback: enabled ? "like" : "dislike", messageId: message.id });
+      } catch (error) {
+        log.warn("feedback.save.failed", {
+          error: error.message || String(error),
+          feedback: enabled ? "like" : "dislike",
+          messageId: message.id
+        });
+      }
+    }
     renderModificationPreview(getFocusedModification());
   });
 
@@ -1129,9 +1143,10 @@ function refreshConversationPreview() {
 
   sentList.innerHTML = conversations.map((message) => {
     const isAssistant = message.role === "assistant";
+    const feedback = normalizeFeedbackValue(message.feedback);
     const feedbackHtml = isAssistant ? `
       <div class="ai-sent-bubble__feedback">
-        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--like" aria-label="Thumbs up" data-feedback="like" data-message-id="${escapeAttr(message.id || "")}">
+        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--like${feedback === "like" ? " is-active" : ""}" aria-label="Thumbs up" data-feedback="like" data-message-id="${escapeAttr(message.id || "")}">
           <svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
             <path d="M507.532,223.313c-9.891-24.594-35-41.125-62.469-41.125H365.86c-2.516,0-4.75-0.031-6.75-0.094
               c0.641-0.844,1.203-1.594,1.672-2.203c2.719-3.563,4.922-6.406,6.656-9.188c0.688-0.922,1.688-2.047,2.859-3.453
@@ -1151,7 +1166,7 @@ function refreshConversationPreview() {
               c0,8.969-7.281,16.25-16.25,16.25c-8.984,0-16.266-7.281-16.266-16.25C33.532,381.391,40.813,374.125,49.798,374.125z"/>
           </svg>
         </button>
-        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--dislike" aria-label="Thumbs down" data-feedback="dislike" data-message-id="${escapeAttr(message.id || "")}">
+        <button type="button" class="ai-sent-bubble__feedback-btn ai-sent-bubble__feedback-btn--dislike${feedback === "dislike" ? " is-active" : ""}" aria-label="Thumbs down" data-feedback="dislike" data-message-id="${escapeAttr(message.id || "")}">
           <svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true" style="transform: scaleY(-1);">
             <path d="M507.532,223.313c-9.891-24.594-35-41.125-62.469-41.125H365.86c-2.516,0-4.75-0.031-6.75-0.094
               c0.641-0.844,1.203-1.594,1.672-2.203c2.719-3.563,4.922-6.406,6.656-9.188c0.688-0.922,1.688-2.047,2.859-3.453
@@ -1188,13 +1203,18 @@ function refreshConversationPreview() {
 
 async function handleFeedbackClick(event) {
   const button = event.currentTarget;
-  const feedback = button.dataset.feedback;
+  const feedback = normalizeFeedbackValue(button.dataset.feedback);
+  if (!feedback) return;
   const messageId = button.dataset.messageId;
   const feedbackBar = button.closest(".ai-sent-bubble__feedback");
 
   feedbackBar?.querySelectorAll(".ai-sent-bubble__feedback-btn").forEach((btn) => {
     btn.classList.toggle("is-active", btn === button);
   });
+
+  const message = findAssistantMessage(messageId);
+  const modificationId = message?.modificationId || null;
+  await setAssistantMessageFeedback(messageId, feedback);
 
   try {
     await sendFeedback({ feedback, messageId });
@@ -1204,9 +1224,69 @@ async function handleFeedbackClick(event) {
     window.PersoAiBar?.toast?.("Feedback saved locally");
   }
 
-  if (feedback === "dislike") {
-    await disableModificationForFeedback(messageId);
+  if (modificationId) {
+    await setModificationEnabled(modificationId, feedback === "like");
+    if (focusedModId === modificationId) {
+      renderModificationPreview(getFocusedModification());
+    }
   }
+}
+
+function normalizeFeedbackValue(value) {
+  const feedback = String(value || "").toLowerCase();
+  return ["like", "dislike"].includes(feedback) ? feedback : "";
+}
+
+function findAssistantMessage(messageId) {
+  const record = normalizeSiteRecord(currentSiteRecord);
+  const message = messageId
+    ? record.conversations.find((item) => item.id === messageId)
+    : [...record.conversations].reverse().find((item) => item.role === "assistant");
+  return message?.role === "assistant" ? message : null;
+}
+
+function findAssistantMessageForModification(modificationId) {
+  if (!modificationId) return null;
+  const record = normalizeSiteRecord(currentSiteRecord);
+  return [...record.conversations].reverse().find((item) => (
+    item.role === "assistant" && item.modificationId === modificationId
+  )) || null;
+}
+
+function updateAssistantFeedbackForModification(modificationId, feedback) {
+  if (!modificationId) return false;
+  let updated = false;
+  currentSiteRecord.conversations = currentSiteRecord.conversations.map((message) => {
+    if (message.role !== "assistant" || message.modificationId !== modificationId) return message;
+    updated = true;
+    return { ...message, feedback };
+  });
+  return updated;
+}
+
+async function setAssistantMessageFeedback(messageId, feedback) {
+  const normalizedFeedback = normalizeFeedbackValue(feedback);
+  if (!normalizedFeedback) return false;
+
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  let modificationId = null;
+  let updated = false;
+  currentSiteRecord.conversations = currentSiteRecord.conversations.map((message) => {
+    if (message.role !== "assistant" || (messageId && message.id !== messageId)) return message;
+    modificationId = message.modificationId || null;
+    updated = true;
+    return { ...message, feedback: normalizedFeedback };
+  });
+
+  if (modificationId) {
+    updateAssistantFeedbackForModification(modificationId, normalizedFeedback);
+  }
+  if (!updated) return false;
+
+  currentSiteRecord.lastUpdatedAt = new Date().toISOString();
+  await saveSiteRecord(currentSiteRecord);
+  refreshConversationPreview();
+  return true;
 }
 
 async function sendFeedback({ feedback, messageId }) {
