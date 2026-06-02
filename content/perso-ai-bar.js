@@ -246,6 +246,17 @@
     if (prev?.nodeType === Node.TEXT_NODE && prev.textContent === "\u200B") prev.remove();
   }
 
+  /**
+   * Find a token element immediately adjacent to the current caret in the editor.
+   *
+   * Searches for a sibling element with the `ai-input__token` class that is directly
+   * before or after the collapsed selection (caret) inside `promptEditor`. If the
+   * selection is not collapsed, outside `promptEditor`, or no adjacent token exists,
+   * the function returns `null`.
+   *
+   * @param {"before"|"after"} direction - Which side of the caret to check: `"before"` checks the node immediately to the left, `"after"` checks the node immediately to the right.
+   * @returns {Element|null} The adjacent `.ai-input__token` element if present, otherwise `null`.
+   */
   function getAdjacentToken(direction) {
     const sel = window.getSelection();
     if (!sel?.rangeCount || !sel.isCollapsed) return null;
@@ -289,6 +300,10 @@
     return null;
   }
 
+  /**
+   * Find the token element that contains (or is) the current document selection.
+   * @returns {HTMLElement|null} The `.ai-input__token` element that is selected or contains the selection, or `null` if none is found.
+   */
   function getSelectedToken() {
     const sel = window.getSelection();
     if (!sel?.rangeCount) return null;
@@ -297,6 +312,15 @@
     return node?.parentElement?.closest?.(".ai-input__token") || null;
   }
 
+  /**
+   * Place the text caret (cursor) inside a text node at a given character offset.
+   *
+   * Clamps the offset to the range [0, textNode.length], collapses the selection to
+   * that position, and replaces any existing selection.
+   *
+   * @param {Text} textNode - The text node in which to position the caret.
+   * @param {number} offset - Character index (0-based) where the caret should be placed.
+   */
   function placeCaretInTextNode(textNode, offset) {
     const range = document.createRange();
     range.setStart(textNode, Math.max(0, Math.min(offset, textNode.textContent?.length || 0)));
@@ -307,6 +331,13 @@
     sel?.addRange(range);
   }
 
+  /**
+   * Delete a single character from a text node at a position relative to a caret offset and place the caret after deletion.
+   * @param {Text} textNode - The text node to modify.
+   * @param {number} offset - The caret offset within the text node (0-based).
+   * @param {'before'|'after'} direction - If `"before"`, deletes the character immediately before `offset`; if `"after"`, deletes the character at `offset`.
+   * @returns {boolean} `true` if a character was deleted and the caret was repositioned, `false` if `offset` is out of bounds and no change was made.
+   */
   function deleteTextNodeChar(textNode, offset, direction) {
     const text = textNode.textContent || "";
     const index = direction === "before" ? offset - 1 : offset;
@@ -317,6 +348,14 @@
     return true;
   }
 
+  /**
+   * Delete either the current selection or a single character adjacent to the caret inside the prompt editor.
+   * 
+   * Deletes the selected content if a non-collapsed selection exists; otherwise deletes one character immediately
+   * before or after the caret depending on `direction`. The caret is relocated appropriately after deletion.
+   * @param {'before'|'after'} direction - Whether to delete the character before (`'before'`) or after (`'after'`) the caret.
+   * @returns {boolean} `true` if any content was deleted, `false` if nothing was deleted (e.g., caret outside the editor or no deletable character).
+   */
   function deleteEditorText(direction) {
     const sel = window.getSelection();
     if (!sel?.rangeCount) return false;
@@ -358,6 +397,12 @@
     return false;
   }
 
+  /**
+   * Convert the editor's content into a single normalized string, replacing tokens with bracketed placeholders.
+   *
+   * Text nodes contribute their text with zero-width spaces removed. Token elements are serialized as `[image:<label>]` for image tokens or `[element:<label>]` for pick tokens. Consecutive whitespace is collapsed to single spaces and the result is trimmed.
+   * @returns {string} The serialized editor content with tokens represented as bracketed placeholders, whitespace collapsed, and trimmed.
+   */
   function serializeEditor() {
     const parts = [];
     promptEditor.childNodes.forEach((node) => {
@@ -816,7 +861,12 @@
     updateSendState();
   }
 
-  /** @returns {HTMLElement | false} root */
+  /**
+   * Initialize and mount the PersoAiBar UI into the given root element.
+   * @param {HTMLElement} root - DOM element that contains the bar markup; must include required child elements (prompt, send button, attach controls, etc.).
+   * @param {Object} [h] - Optional hooks object. Supported callbacks: `toast`, `onPick`, `onSend`, `onRevert`.
+   * @returns {boolean} `true` when the bar is successfully mounted or already mounted, `false` if required child elements are missing.
+   */
   function attach(root, h) {
     if (root.dataset.persoAiBarMounted === "1") return true;
 
