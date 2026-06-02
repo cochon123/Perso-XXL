@@ -27,6 +27,12 @@ Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies 
 
 ## Load locally in Chrome/Chromium
 
+Build the Chromium extension files:
+
+```sh
+npm run build:chromium
+```
+
 Start the dev log terminal:
 
 ```sh
@@ -36,7 +42,7 @@ PERSO_DATABASE_URL=postgres://user:password@localhost:5432/perso_xxl npm run dev
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
 3. Choose "Load unpacked".
-4. Select this directory.
+4. Select `dist/chromium`.
 5. Open any `http` or `https` website.
 6. Click the extension icon, or press `Ctrl+Shift+P`, to open the centered Perso XXL command palette.
 7. Optionally click **◎** to pick element(s), describe what to change, and click "Generate and apply".
@@ -47,6 +53,12 @@ With the dev server running, extension events will stream into your terminal. Li
 
 ## Load locally in Firefox
 
+Build the Firefox extension files:
+
+```sh
+npm run build:firefox
+```
+
 Start the dev log terminal:
 
 ```sh
@@ -55,11 +67,17 @@ PERSO_DATABASE_URL=postgres://user:password@localhost:5432/perso_xxl npm run dev
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Choose "Load Temporary Add-on...".
-3. Select `manifest.json` from this directory.
+3. Select `dist/firefox/manifest.json`.
 4. Open any `http` or `https` website.
 5. Click the extension icon, or press `Ctrl+Shift+P`, to open the centered Perso XXL command palette.
 
 Temporary add-ons are removed when Firefox restarts, so reload the manifest from `about:debugging` after restarting the browser.
+
+To build both browser variants at once:
+
+```sh
+npm run build
+```
 
 ## OpenRouter key
 

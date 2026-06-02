@@ -3,11 +3,6 @@
   "name": "Perso XXL",
   "description": "AI-personalized layouts for any website.",
   "version": "0.3.0",
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "perso-xxl@local"
-    }
-  },
   "permissions": [
     "activeTab",
     "scripting",
@@ -43,8 +38,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["chat-interface/fonts/Chewy-Regular.ttf"],
-      "matches": ["http://*/*", "https://*/*"]
+      "resources": [
+        "chat-interface/fonts/Chewy-Regular.ttf"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
     }
   ],
   "content_scripts": [
@@ -72,5 +72,10 @@
       ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "perso-xxl@local"
+    }
+  }
 }
