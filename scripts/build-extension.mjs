@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,8 +20,7 @@ const extensionPaths = [
   "chat-interface",
   "config",
   "content",
-  "dashboard",
-  "shared"
+  "dashboard"
 ];
 
 const requestedTarget = process.argv[2];
@@ -49,6 +48,7 @@ for (const [browser, target] of selectedTargets) {
     }
 
     await cp(path.join(repoRoot, target.manifest), path.join(outPath, "manifest.json"));
+    await ensureRuntimeEnv(outPath);
     await writeFile(path.join(outPath, "BROWSER_TARGET"), `${browser}\n`);
 
     console.log(`${browser} extension built at ${target.outDir}`);
@@ -58,5 +58,18 @@ for (const [browser, target] of selectedTargets) {
     );
     console.error(error?.stack || error);
     process.exit(1);
+  }
+}
+
+async function ensureRuntimeEnv(outPath) {
+  const outputEnvPath = path.join(outPath, "config/env.js");
+
+  try {
+    await access(outputEnvPath);
+  } catch (_error) {
+    await cp(
+      path.join(repoRoot, "config/env.example.js"),
+      outputEnvPath
+    );
   }
 }

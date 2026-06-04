@@ -1,5 +1,10 @@
 window.PersoExecutor = (() => {
   const log = window.PersoLogger;
+  const {
+    ALLOWED_INSERT_TAGS,
+    ALLOWED_INSERT_ATTRIBUTES,
+    ALLOWED_PLACEMENTS
+  } = window.PersoSchema;
   const STYLE_ID = "perso-xxl-theme";
   const RULE_STYLE_ID = "perso-xxl-css-rules";
   const TARGET_STYLE_ID = "perso-xxl-target-rules";
@@ -10,29 +15,6 @@ window.PersoExecutor = (() => {
   const MOVED_ATTR = "data-perso-xxl-moved";
   const CREATED_ATTR = "data-perso-xxl-created";
   const SWAPPED_ATTR = "data-perso-xxl-swapped";
-  const ALLOWED_INSERT_TAGS = new Set([
-    "a",
-    "aside",
-    "button",
-    "div",
-    "figcaption",
-    "figure",
-    "footer",
-    "h1",
-    "h2",
-    "h3",
-    "header",
-    "img",
-    "li",
-    "nav",
-    "p",
-    "section",
-    "span",
-    "strong",
-    "ul"
-  ]);
-  const ALLOWED_INSERT_ATTRIBUTES = new Set(["alt", "aria-label", "href", "role", "src", "title"]);
-  const ALLOWED_PLACEMENTS = new Set(["append", "prepend", "before", "after", "replace"]);
   const originalState = new WeakMap();
   const originalPositions = new WeakMap();
 

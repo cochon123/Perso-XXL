@@ -1,14 +1,15 @@
 const CONTENT_FILES = [
   "config/env.js",
   "content/logger.js",
+  "content/schema.js",
   "content/openrouter-client.js",
   "content/picker.js",
   "content/dom-context.js",
   "content/executor.js",
   "content/ai-client.js",
   "content/vendor/gsap.min.js",
-  "chat-interface/main.js",
-  "content/content.js"
+  "content/content.js",
+  "chat-interface/main.js"
 ];
 
 const CONTENT_CSS_FILES = [

@@ -13,6 +13,7 @@ describe("Perso content runtime in happy-dom", () => {
       warn() {},
       error() {}
     };
+    loadContentScript("content/schema.js");
     loadContentScript("content/dom-context.js");
     loadContentScript("content/executor.js");
   });
@@ -290,10 +291,34 @@ describe("Perso content runtime in happy-dom", () => {
     expect(plans.map((plan) => plan.sourcePrompt)).toEqual(["Hide the sidebar", "Make the button blue"]);
     expect(plans.every((plan) => window.PersoAiClient.validateTransformPlan(plan).ok)).toBe(true);
   });
+
+  it("loads runtime schema before scripts that consume it", () => {
+    const chromiumScripts = readManifestScripts("manifest.json");
+    const firefoxScripts = readManifestScripts("manifest-firefox.json");
+    const background = readFileSync(resolve(rootDir, "background/service-worker.js"), "utf8");
+
+    expectScriptOrder(chromiumScripts, "content/schema.js", "content/executor.js");
+    expectScriptOrder(chromiumScripts, "content/schema.js", "content/ai-client.js");
+    expectScriptOrder(firefoxScripts, "content/schema.js", "content/executor.js");
+    expectScriptOrder(firefoxScripts, "content/schema.js", "content/ai-client.js");
+    expect(background.indexOf('"content/schema.js"')).toBeLessThan(background.indexOf('"content/executor.js"'));
+    expect(background.indexOf('"content/content.js"')).toBeLessThan(background.indexOf('"chat-interface/main.js"'));
+  });
 });
 
 function loadContentScript(relativePath) {
   window.eval(readFileSync(resolve(rootDir, relativePath), "utf8"));
+}
+
+function readManifestScripts(relativePath) {
+  const manifest = JSON.parse(readFileSync(resolve(rootDir, relativePath), "utf8"));
+  return manifest.content_scripts[0].js;
+}
+
+function expectScriptOrder(scripts, first, second) {
+  expect(scripts).toContain(first);
+  expect(scripts).toContain(second);
+  expect(scripts.indexOf(first)).toBeLessThan(scripts.indexOf(second));
 }
 
 function installRectMock(options = {}) {
