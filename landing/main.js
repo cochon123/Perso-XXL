@@ -2,36 +2,6 @@ gsap.registerPlugin(ScrollTrigger);
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ── Split text nodes into char spans (preserves nested HTML) ── */
-function splitTextIntoChars(el) {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-    },
-  });
-
-  const textNodes = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode);
-
-  textNodes.forEach((node) => {
-    const text = node.textContent.replace(/\s+/g, ' ');
-    const frag = document.createDocumentFragment();
-    for (const c of text) {
-      if (c === ' ') {
-        frag.appendChild(document.createTextNode(' '));
-      } else {
-        const span = document.createElement('span');
-        span.className = 'char';
-        span.textContent = c;
-        frag.appendChild(span);
-      }
-    }
-    node.replaceWith(frag);
-  });
-}
-
-document.querySelectorAll('.reveal-chars').forEach(splitTextIntoChars);
-
 /* ── Hero entrance ── */
 const heroTl = gsap.timeline({ defaults: { ease: 'power3.out' } });
 heroTl
@@ -65,39 +35,19 @@ gsap.utils.toArray('.reveal').forEach((el) => {
   });
 });
 
-gsap.utils.toArray('.reveal-chars').forEach((el) => {
-  const chars = el.querySelectorAll('.char');
-  gsap.from(chars, {
-    y: 30,
+gsap.utils.toArray('.reveal-statement').forEach((el, i) => {
+  gsap.from(el, {
+    y: 26,
     opacity: 0,
-    duration: 0.6,
-    stagger: 0.02,
-    ease: 'back.out(1.4)',
+    duration: 0.7,
+    delay: i * 0.08,
+    ease: 'power3.out',
     immediateRender: false,
     scrollTrigger: {
-      trigger: el,
-      start: 'top 95%',
-      end: 'top 40%',
+      trigger: '.not-average',
+      start: 'top 72%',
       toggleActions: 'play none none none',
       once: true,
-    },
-  });
-});
-
-/* Pink pulse on the "not" letters */
-gsap.utils.toArray('.big-statement .highlight .char').forEach((char) => {
-  gsap.to(char, {
-    color: '#ff6ba8',
-    scale: 1.15,
-    duration: 1.5,
-    repeat: -1,
-    yoyo: true,
-    ease: 'sine.inOut',
-    scrollTrigger: {
-      trigger: '.not-average',
-      start: 'top 60%',
-      end: 'bottom 40%',
-      toggleActions: 'play pause resume pause',
     },
   });
 });
@@ -116,6 +66,7 @@ let funThresholds = [];
 const boringCrossed = new Set();
 const funCrossed = new Set();
 let comparisonReady = false;
+let comparisonTicking = false;
 
 function cacheLetterThresholds() {
   const stageRect = comparisonPin.getBoundingClientRect();
@@ -194,51 +145,52 @@ function initComparisonScroll() {
   comparisonReady = true;
 
   cacheLetterThresholds();
-  applyComparisonProgress(0);
-
-  ScrollTrigger.create({
-    id: 'comparison-reveal',
-    trigger: comparisonSection,
-    start: 'top top',
-    end: '+=200%',
-    pin: comparisonPin,
-    scrub: true,
-    anticipatePin: 1,
-    invalidateOnRefresh: true,
-    onUpdate: (self) => applyComparisonProgress(self.progress),
-    onRefreshInit: () => {
-      boringCrossed.clear();
-      funCrossed.clear();
-      boringLetters.forEach((letter) => {
-        letter.classList.remove('pop-boring');
-        gsap.set(letter, { clearProps: 'all' });
-      });
-      funLetters.forEach((letter) => {
-        letter.classList.remove('pop-fun');
-        gsap.set(letter, { opacity: 0.3, scale: 0.8, rotation: 0, y: 0 });
-      });
-    },
-    onRefresh: (self) => {
-      cacheLetterThresholds();
-      applyComparisonProgress(self.progress);
-    },
+  updateComparisonFromScroll();
+  window.addEventListener('scroll', requestComparisonUpdate, { passive: true });
+  window.addEventListener('resize', () => {
+    resetComparisonLetters();
+    cacheLetterThresholds();
+    updateComparisonFromScroll();
   });
 }
 
-const comparisonImages = comparisonSection.querySelectorAll('.comparison-img');
-Promise.all(
-  [...comparisonImages].map(
-    (img) =>
-      new Promise((resolve) => {
-        if (img.complete) resolve();
-        else {
-          img.addEventListener('load', resolve, { once: true });
-          img.addEventListener('error', resolve, { once: true });
-        }
-      })
-  )
-).then(() => {
-  initComparisonScroll();
+function resetComparisonLetters() {
+  boringCrossed.clear();
+  funCrossed.clear();
+  boringLetters.forEach((letter) => {
+    letter.classList.remove('pop-boring');
+    gsap.set(letter, { clearProps: 'all' });
+  });
+  funLetters.forEach((letter) => {
+    letter.classList.remove('pop-fun');
+    gsap.set(letter, { opacity: 0.3, scale: 0.8, rotation: 0, y: 0 });
+  });
+}
+
+function getComparisonProgress() {
+  const rect = comparisonSection.getBoundingClientRect();
+  const scrollable = comparisonSection.offsetHeight - window.innerHeight;
+  if (scrollable <= 0) return rect.top <= 0 ? 1 : 0;
+  return gsap.utils.clamp(0, 1, -rect.top / scrollable);
+}
+
+function updateComparisonFromScroll() {
+  comparisonTicking = false;
+  applyComparisonProgress(getComparisonProgress());
+}
+
+function requestComparisonUpdate() {
+  if (comparisonTicking) return;
+  comparisonTicking = true;
+  requestAnimationFrame(updateComparisonFromScroll);
+}
+
+initComparisonScroll();
+
+window.addEventListener('load', () => {
+  resetComparisonLetters();
+  cacheLetterThresholds();
+  updateComparisonFromScroll();
   ScrollTrigger.refresh();
 });
 

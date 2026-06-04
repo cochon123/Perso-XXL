@@ -11,12 +11,8 @@ window.PersoDomContext = (() => {
   function collectPageDom(options = {}) {
     const maxNodes = options.maxNodes || MAX_PAGE_NODES;
     const nodes = [];
-    let count = 0;
 
-    walkElement(document.body, 0, maxNodes, nodes, () => {
-      count += 1;
-      return count <= maxNodes;
-    });
+    walkElement(document.body, 0, maxNodes, nodes);
 
     return {
       url: location.href,
@@ -33,23 +29,28 @@ window.PersoDomContext = (() => {
     };
   }
 
-  function walkElement(element, depth, maxNodes, nodes, shouldContinue) {
-    if (!element || depth > MAX_DEPTH || !shouldContinue()) return;
+  function walkElement(element, depth, maxNodes, nodes) {
+    if (!element || depth > MAX_DEPTH || nodes.length >= maxNodes) return;
 
     if (isPersoNode(element)) {
       for (const child of element.children) {
-        walkElement(child, depth, maxNodes, nodes, shouldContinue);
+        walkElement(child, depth, maxNodes, nodes);
+        if (nodes.length >= maxNodes) break;
       }
       return;
     }
 
-    if (!isVisible(element)) return;
+    const visibility = getVisibilityProfile(element);
+    if (visibility.isHiddenByStyle) return;
 
-    nodes.push(summarizeNode(element, depth));
+    if (visibility.hasVisibleBox) {
+      nodes.push(summarizeNode(element, depth));
+      if (nodes.length >= maxNodes) return;
+    }
 
     for (const child of element.children) {
-      walkElement(child, depth + 1, maxNodes, nodes, shouldContinue);
-      if (!shouldContinue()) break;
+      walkElement(child, depth + 1, maxNodes, nodes);
+      if (nodes.length >= maxNodes) break;
     }
   }
 
@@ -474,12 +475,17 @@ window.PersoDomContext = (() => {
   }
 
   function isVisible(element) {
+    const visibility = getVisibilityProfile(element);
+    return visibility.hasVisibleBox && !visibility.isHiddenByStyle;
+  }
+
+  function getVisibilityProfile(element) {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    return rect.width > 0 &&
-      rect.height > 0 &&
-      style.display !== "none" &&
-      style.visibility !== "hidden";
+    return {
+      hasVisibleBox: rect.width > 0 && rect.height > 0,
+      isHiddenByStyle: style.display === "none" || style.visibility === "hidden"
+    };
   }
 
   function truncateHtml(value) {

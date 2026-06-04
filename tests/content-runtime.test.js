@@ -53,6 +53,38 @@ describe("Perso content runtime in happy-dom", () => {
     expect(selection.selectorHints).toContain("article.video-card");
   });
 
+  it("walks through zero-size containers when collecting DOM context", () => {
+    document.body.innerHTML = `
+      <main class="app-shell">
+        <section class="feed">
+          <article class="video-card" data-channel="Ada">A visible card</article>
+        </section>
+      </main>
+    `;
+    installRectMock({
+      zeroSizeSelectors: ["body", ".app-shell"]
+    });
+
+    const context = window.PersoDomContext.collectPageDom({ maxNodes: 20 });
+
+    expect(context.nodes.some((node) => node.classes.includes("app-shell"))).toBe(false);
+    expect(context.nodes.some((node) => node.classes.includes("feed"))).toBe(true);
+    expect(context.nodes.some((node) => node.classes.includes("video-card"))).toBe(true);
+  });
+
+  it("does not collect children hidden by display none containers", () => {
+    document.body.innerHTML = `
+      <main style="display: none">
+        <article class="hidden-card">Hidden card</article>
+      </main>
+    `;
+    installRectMock();
+
+    const context = window.PersoDomContext.collectPageDom({ maxNodes: 20 });
+
+    expect(context.nodes.some((node) => node.classes.includes("hidden-card"))).toBe(false);
+  });
+
   it("applies and reverts visibility, style, and inserted elements", () => {
     document.body.innerHTML = `
       <main>
@@ -264,19 +296,22 @@ function loadContentScript(relativePath) {
   window.eval(readFileSync(resolve(rootDir, relativePath), "utf8"));
 }
 
-function installRectMock() {
+function installRectMock(options = {}) {
+  const zeroSizeSelectors = options.zeroSizeSelectors || [];
+
   for (const element of [document.body, ...document.body.querySelectorAll("*")]) {
     element.getBoundingClientRect = () => {
       const hidden = element.style.display === "none";
+      const zeroSize = zeroSizeSelectors.some((selector) => element.matches(selector));
       return {
         x: 0,
         y: 0,
         top: 0,
         left: 0,
-        right: hidden ? 0 : 120,
-        bottom: hidden ? 0 : 32,
-        width: hidden ? 0 : 120,
-        height: hidden ? 0 : 32
+        right: hidden || zeroSize ? 0 : 120,
+        bottom: hidden || zeroSize ? 0 : 32,
+        width: hidden || zeroSize ? 0 : 120,
+        height: hidden || zeroSize ? 0 : 32
       };
     };
   }
