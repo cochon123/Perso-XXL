@@ -172,6 +172,14 @@
   transform: scale(0.92);
 }
 
+#perso-xxl-panel .ai-sent-bubble__feedback-btn:disabled{
+  cursor: default;
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn.is-pending{
+  transform: scale(0.96);
+}
+
 #perso-xxl-panel .ai-sent-bubble__feedback-btn.is-active{
   background: rgba(255, 45, 122, 0.2);
   color: #ff6ba8;

@@ -13,6 +13,7 @@ let selectionCounter = 0;
 let focusedModId = null;
 /** @type {HTMLElement | null} */
 let modPreviewOverlay = null;
+const pendingFeedbackByMessage = new Map();
 const extensionApi = globalThis.browser || globalThis.chrome;
 const SITE_RECORD_PREFIX = "siteRecord:";
 const LEGACY_PLAN_PREFIX = "sitePlan:";
@@ -862,7 +863,7 @@ async function saveSiteRecord(record) {
   await extensionApi.storage.local.set({ [getSiteRecordKey()]: currentSiteRecord });
 }
 
-async function setModificationEnabled(id, enabled) {
+async function setModificationEnabled(id, enabled, { refresh = true } = {}) {
   currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
   currentSiteRecord.modifications = currentSiteRecord.modifications.map((modification) => (
     modification.id === id
@@ -873,7 +874,7 @@ async function setModificationEnabled(id, enabled) {
   currentSiteRecord.lastUpdatedAt = new Date().toISOString();
   await saveSiteRecord(currentSiteRecord);
   currentPlan = composeEnabledPlan(currentSiteRecord);
-  refreshConversationPreview();
+  if (refresh) refreshConversationPreview();
   suppressMutationApplyUntil = Date.now() + 1200;
   window.PersoExecutor.revertPlan();
   applyCurrentPlan();
@@ -1206,30 +1207,84 @@ async function handleFeedbackClick(event) {
   const feedback = normalizeFeedbackValue(button.dataset.feedback);
   if (!feedback) return;
   const messageId = button.dataset.messageId;
-  const feedbackBar = button.closest(".ai-sent-bubble__feedback");
+  if (!messageId || pendingFeedbackByMessage.has(messageId)) return;
+  const message = findAssistantMessage(messageId);
+  if (!message) return;
 
-  feedbackBar?.querySelectorAll(".ai-sent-bubble__feedback-btn").forEach((btn) => {
+  const feedbackBar = button.closest(".ai-sent-bubble__feedback");
+  const buttons = Array.from(feedbackBar?.querySelectorAll(".ai-sent-bubble__feedback-btn") || []);
+
+  buttons.forEach((btn) => {
     btn.classList.toggle("is-active", btn === button);
+    btn.classList.toggle("is-pending", btn === button);
+    btn.disabled = true;
   });
 
-  const message = findAssistantMessage(messageId);
   const modificationId = message?.modificationId || null;
-  await setAssistantMessageFeedback(messageId, feedback);
+  const feedbackPromise = (async () => {
+    try {
+      await applyAssistantFeedbackLocally(messageId, feedback);
+      if (modificationId && focusedModId === modificationId) {
+        renderModificationPreview(getFocusedModification());
+      }
 
-  try {
-    await sendFeedback({ feedback, messageId });
-    window.PersoAiBar?.toast?.("Feedback saved");
-  } catch (error) {
-    log.warn("feedback.save.failed", { error: error.message || String(error), feedback, messageId });
-    window.PersoAiBar?.toast?.("Feedback saved locally");
-  }
+      sendFeedback({ feedback, messageId })
+        .then(() => {
+          window.PersoAiBar?.toast?.("Feedback saved");
+        })
+        .catch((error) => {
+          log.warn("feedback.save.failed", { error: error.message || String(error), feedback, messageId });
+          window.PersoAiBar?.toast?.("Feedback saved locally");
+        });
+    } catch (error) {
+      log.warn("feedback.apply.failed", { error: error.message || String(error), feedback, messageId });
+      window.PersoAiBar?.toast?.("Feedback could not be applied");
+      refreshConversationPreview();
+    } finally {
+      pendingFeedbackByMessage.delete(messageId);
+      buttons.forEach((btn) => {
+        btn.classList.remove("is-pending");
+        btn.disabled = false;
+      });
+    }
+  })();
+
+  pendingFeedbackByMessage.set(messageId, feedbackPromise);
+}
+
+async function applyAssistantFeedbackLocally(messageId, feedback) {
+  const normalizedFeedback = normalizeFeedbackValue(feedback);
+  if (!normalizedFeedback) return false;
+
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  let modificationId = null;
+  let updated = false;
+
+  currentSiteRecord.conversations = currentSiteRecord.conversations.map((message) => {
+    if (message.role !== "assistant" || message.id !== messageId) return message;
+    modificationId = message.modificationId || null;
+    updated = true;
+    return { ...message, feedback: normalizedFeedback };
+  });
+
+  if (!updated) return false;
 
   if (modificationId) {
-    await setModificationEnabled(modificationId, feedback === "like");
-    if (focusedModId === modificationId) {
-      renderModificationPreview(getFocusedModification());
-    }
+    currentSiteRecord.modifications = currentSiteRecord.modifications.map((modification) => (
+      modification.id === modificationId
+        ? { ...modification, enabled: normalizedFeedback === "like", updatedAt: new Date().toISOString() }
+        : modification
+    ));
+    updateAssistantFeedbackForModification(modificationId, normalizedFeedback);
+    currentPlan = composeEnabledPlan(currentSiteRecord);
+    suppressMutationApplyUntil = Date.now() + 1200;
+    window.PersoExecutor.revertPlan();
+    applyCurrentPlan();
   }
+
+  currentSiteRecord.lastUpdatedAt = new Date().toISOString();
+  await saveSiteRecord(currentSiteRecord);
+  return true;
 }
 
 function normalizeFeedbackValue(value) {
@@ -1264,7 +1319,7 @@ function updateAssistantFeedbackForModification(modificationId, feedback) {
   return updated;
 }
 
-async function setAssistantMessageFeedback(messageId, feedback) {
+async function setAssistantMessageFeedback(messageId, feedback, { refresh = true } = {}) {
   const normalizedFeedback = normalizeFeedbackValue(feedback);
   if (!normalizedFeedback) return false;
 
@@ -1285,7 +1340,7 @@ async function setAssistantMessageFeedback(messageId, feedback) {
 
   currentSiteRecord.lastUpdatedAt = new Date().toISOString();
   await saveSiteRecord(currentSiteRecord);
-  refreshConversationPreview();
+  if (refresh) refreshConversationPreview();
   return true;
 }
 
