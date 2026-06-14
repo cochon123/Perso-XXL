@@ -20,12 +20,11 @@ if (!prefersReducedMotion) {
 
 /* ── Scroll reveals ── */
 gsap.utils.toArray('.reveal').forEach((el) => {
-  gsap.from(el, {
-    y: 50,
-    opacity: 0,
+  gsap.to(el, {
+    y: 0,
+    opacity: 1,
     duration: 1,
     ease: 'power3.out',
-    immediateRender: false,
     scrollTrigger: {
       trigger: el,
       start: 'top 85%',
@@ -36,13 +35,12 @@ gsap.utils.toArray('.reveal').forEach((el) => {
 });
 
 gsap.utils.toArray('.reveal-statement').forEach((el, i) => {
-  gsap.from(el, {
-    y: 26,
-    opacity: 0,
+  gsap.to(el, {
+    y: 0,
+    opacity: 1,
     duration: 0.7,
     delay: i * 0.08,
     ease: 'power3.out',
-    immediateRender: false,
     scrollTrigger: {
       trigger: '.not-average',
       start: 'top 72%',
@@ -223,13 +221,12 @@ gsap.to('.productivity-bg img', {
 });
 
 /* Feature stagger */
-gsap.from('.feature', {
-  x: -40,
-  opacity: 0,
+gsap.to('.feature', {
+  x: 0,
+  opacity: 1,
   duration: 0.8,
   stagger: 0.15,
   ease: 'power3.out',
-  immediateRender: false,
   scrollTrigger: {
     trigger: '.feature-list',
     start: 'top 80%',

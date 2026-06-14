@@ -32,6 +32,21 @@ body {
 img { display: block; max-width: 100%; }
 a { color: inherit; text-decoration: none; }
 
+.js .reveal,
+.js .reveal-statement,
+.js .feature {
+  opacity: 0;
+  transform: translate3d(0, 50px, 0);
+}
+
+.js .reveal-statement {
+  transform: translate3d(0, 26px, 0);
+}
+
+.js .feature {
+  transform: translate3d(-40px, 0, 0);
+}
+
 /* ── Ambient layers ── */
 .noise {
   position: fixed;
