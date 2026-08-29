@@ -468,9 +468,17 @@ window.PersoDomContext = (() => {
   }
 
   function isPersoNode(node) {
-    return Boolean(
+    if (
       node?.id?.startsWith("perso-xxl") ||
-      node?.closest?.("#perso-xxl-panel, #perso-xxl-picker-overlay, [data-perso-xxl-ui], .ai-input, .ai-sent-list, .preview-stack, .productivity-ai-wrap, .productivity-toast")
+      node?.closest?.("#perso-xxl-panel, #perso-xxl-picker-overlay, [data-perso-xxl-ui]")
+    ) {
+      return true;
+    }
+
+    if (window.PersoDemo?.enabled) return false;
+
+    return Boolean(
+      node?.closest?.(".ai-input, .ai-sent-list, .preview-stack, .productivity-ai-wrap, .productivity-toast")
     );
   }
 
