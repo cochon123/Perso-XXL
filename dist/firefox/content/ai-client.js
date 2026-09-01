@@ -19,11 +19,13 @@ window.PersoAiClient = (() => {
     selections = [],
     availableAssets = [],
     previousPlan = null,
-    validationErrors = []
+    validationErrors = [],
+    signal
   }) {
     const payload = await requestJson({
       taskName: previousPlan ? "plan-repair" : "plan-generation",
       temperature: 0.35,
+      signal,
       messages: [
         {
           role: "system",
@@ -107,6 +109,7 @@ window.PersoAiClient = (() => {
     const payload = await requestJson({
       taskName: options.previousPlan ? "plan-repair" : "plan-generation",
       temperature: 0.35,
+      signal: options.signal,
       messages: [
         {
           role: "system",
@@ -168,7 +171,7 @@ window.PersoAiClient = (() => {
     return normalizeModificationPlans(payload, options.prompt, options.pageContext, options.selections || []);
   }
 
-  async function requestJson({ taskName, messages, temperature }) {
+  async function requestJson({ taskName, messages, temperature, signal }) {
     const apiKey = window.PersoEnv?.OPENROUTER_API_KEY;
     const model = window.PersoEnv?.OPENROUTER_MODEL || DEFAULT_MODEL;
 
@@ -194,7 +197,8 @@ window.PersoAiClient = (() => {
       model,
       messages,
       temperature,
-      responseFormat: { type: "json_object" }
+      responseFormat: { type: "json_object" },
+      signal
     });
     const durationMs = Math.round(performance.now() - startedAt);
 

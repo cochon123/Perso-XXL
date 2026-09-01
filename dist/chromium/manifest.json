@@ -43,10 +43,18 @@
         "content/executor.js",
         "content/ai-client.js",
         "content/vendor/gsap.min.js",
+        "content/direct-agent.js",
         "content/content.js",
+        "content/webmcp-host.js",
         "chat-interface/main.js"
       ],
       "css": ["content/base.css", "content/chat-interface.css", "chat-interface/embedded.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "world": "MAIN",
+      "js": ["content/tools-def.js", "content/webmcp-bridge.js"],
       "run_at": "document_idle"
     }
   ]

@@ -1,0 +1,7 @@
+[build]
+  command = "node scripts/build-playground.mjs"
+  publish = "playground"
+  functions = "netlify/functions"
+
+[functions]
+  directory = "netlify/functions"

@@ -1,0 +1,303 @@
+/* Chewy @font-face is injected from content.js via runtime.getURL — content-script
+   CSS url() paths resolve against the page origin and 404 on regular websites. */
+
+html[data-perso-xxl-enabled="true"] {
+  color-scheme: dark;
+}
+
+[data-perso-xxl-rule] {
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+/* Match landing: Chewy on the panel root, component.css inherits it */
+#perso-xxl-panel {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: auto;
+  z-index: 2147483647;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  font-family: "Chewy", system-ui, sans-serif;
+}
+
+#perso-xxl-panel .perso-xxl-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  background: transparent;
+}
+
+#perso-xxl-panel .ai-input__editor,
+#perso-xxl-panel .ai-input__placeholder {
+  font-family: inherit;
+}
+
+#perso-xxl-panel[hidden] {
+  display: none;
+}
+
+#perso-xxl-panel .preview-stack {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  width: min(calc(var(--ai-width) * 1px), calc(100vw - 48px));
+  max-width: 100%;
+}
+
+#perso-xxl-panel .mod-focus-stack {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  width: min(calc(var(--ai-width) * 1px), calc(100vw - 48px));
+  max-width: 100%;
+}
+
+#perso-xxl-panel .mod-focus-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: calc(var(--ai-padding-y) * 1px) calc(var(--ai-padding-x) * 1px);
+  border-radius: calc(var(--ai-radius) * 1px);
+  border: calc(var(--ai-border-width) * 1px) solid var(--ai-border);
+  background: var(--ai-bg);
+  backdrop-filter: blur(calc(var(--ai-backdrop-blur) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--ai-backdrop-blur) * 1px));
+  box-shadow: 0 calc(var(--ai-shadow-spread) * 1px) calc(var(--ai-shadow-blur) * 1px) rgba(255, 45, 122, calc(var(--ai-shadow-opacity)));
+}
+
+#perso-xxl-panel .mod-focus-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: calc(var(--ai-btn-size) * 1px);
+}
+
+#perso-xxl-panel .mod-focus-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: calc(var(--ai-btn-size) * 1px);
+  height: calc(var(--ai-btn-size) * 1px);
+  border: 1px solid transparent;
+  border-radius: calc(var(--ai-radius) * 0.55px);
+  background: var(--ai-btn-bg);
+  color: var(--ai-text);
+  cursor: pointer;
+  padding: 0;
+}
+
+#perso-xxl-panel .mod-focus-edit:hover {
+  background: var(--ai-btn-bg-hover);
+}
+
+#perso-xxl-panel .mod-focus-edit svg {
+  width: calc(var(--ai-icon-size) * 1px);
+  height: calc(var(--ai-icon-size) * 1px);
+}
+
+#perso-xxl-panel .mod-focus-title,
+#perso-xxl-panel .mod-focus-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--ai-text);
+  font-family: inherit;
+  font-size: calc(var(--ai-font-size) * 1px);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+#perso-xxl-panel .mod-focus-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#perso-xxl-panel .mod-focus-title-input {
+  border: 1px solid var(--ai-border);
+  border-radius: calc(var(--ai-radius) * 0.45px);
+  background: rgba(255, 255, 255, 0.04);
+  outline: none;
+  padding: 8px 10px;
+}
+
+#perso-xxl-panel .mod-focus-title-input:focus {
+  border-color: var(--ai-accent);
+}
+
+#perso-xxl-panel .mod-focus-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#perso-xxl-panel .mod-focus-actions button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: calc(var(--ai-radius) * 0.55px);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ai-text);
+  cursor: pointer;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+#perso-xxl-panel .mod-focus-actions button:hover {
+  border-color: rgba(255, 45, 122, 0.45);
+}
+
+#perso-xxl-panel .mod-focus-actions #mod-focus-delete {
+  color: #ffd4d4;
+}
+
+#perso-xxl-mod-preview-overlay {
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+.perso-xxl-mod-preview-highlight {
+  background: rgba(255, 45, 122, 0.12);
+  border: 2px solid #ff2d7a;
+  box-sizing: border-box;
+  pointer-events: none;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+#perso-xxl-panel .productivity-toast:empty {
+  display: none;
+}
+
+#perso-xxl-panel .productivity-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(120%);
+  opacity: 0;
+  visibility: hidden;
+  padding: 0.65rem 1.1rem;
+  border-radius: 999px;
+  background: rgba(18, 10, 16, 0.94);
+  border: 1px solid rgba(255, 45, 122, 0.3);
+  color: #faf8f9;
+  font-size: 0.85rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  z-index: 2147483647;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    visibility 0s linear 320ms;
+}
+
+#perso-xxl-panel .productivity-toast.is-visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 160ms ease,
+    transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    visibility 0s;
+}
+
+/* ── Picker ── */
+
+#perso-xxl-picker-overlay {
+  cursor: crosshair;
+  inset: 0;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+#perso-xxl-picker-highlight {
+  background: rgba(255, 45, 122, 0.12);
+  border: 2px solid #ff2d7a;
+  box-sizing: border-box;
+  pointer-events: none;
+  position: fixed;
+  z-index: 2147483646;
+}
+
+#perso-xxl-picker-hint {
+  background: rgba(18, 18, 20, 0.92);
+  border: 1px solid #34343a;
+  border-radius: 8px;
+  bottom: 20px;
+  color: #f4f4f5;
+  font-family: Inter, Arial, system-ui, sans-serif;
+  font-size: 13px;
+  left: 50%;
+  padding: 10px 14px;
+  pointer-events: none;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+}
+
+/* ── Feedback buttons on sent bubbles ── */
+#perso-xxl-panel .ai-sent-bubble__feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 45, 122, 0.2);
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(250, 248, 249, 0.5);
+  cursor: pointer;
+  transition:
+    background 220ms ease,
+    color 220ms ease,
+    transform 220ms ease;
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(250, 248, 249, 0.8);
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn:active {
+  transform: scale(0.92);
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn:disabled {
+  cursor: default;
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn.is-pending {
+  transform: scale(0.96);
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn.is-active {
+  background: rgba(255, 45, 122, 0.2);
+  color: #ff6ba8;
+}
+
+#perso-xxl-panel .ai-sent-bubble__feedback-btn svg {
+  width: 18px;
+  height: 18px;
+}

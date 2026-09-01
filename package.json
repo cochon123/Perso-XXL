@@ -9,6 +9,7 @@
     "build:firefox": "npm run build:manifest:firefox && node scripts/build-extension.mjs firefox",
     "build": "npm run build:manifest:firefox && node scripts/build-extension.mjs",
     "dev:server": "node scripts/log-server.mjs",
+    "build:playground": "node scripts/build-playground.mjs",
     "test": "vitest run"
   },
   "repository": {

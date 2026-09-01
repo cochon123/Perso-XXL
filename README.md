@@ -25,6 +25,109 @@ Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies 
 - Background injection fallback so the command palette can open on already-loaded pages after extension reloads.
 - Saved modifications are stored per hostname + pathname and reapply when the page changes.
 
+## WebMCP (OpenAI WebMCP Challenge)
+
+WebMCP is a browser API (`document.modelContext.registerTool`) that lets a page expose tools to an in-browser agent. It is available in Chrome 149+ behind `chrome://flags/#enable-webmcp-testing`, and on by default in the ChatGPT desktop app's in-app browser.
+
+Sites will not ship first-party WebMCP tools for years. Perso XXL inverts that: the user's extension registers personalization tools on every page, so an agent can transform a site the user did not write. The hosted Playground is the same engine running as a first-party site that calls `registerTool` itself.
+
+### What was built during the WebMCP Challenge
+
+Prior work (planner, validator, executor, command palette, dashboard) predates the challenge. The items below are new challenge-period work; they appear in challenge-period commits.
+
+**New**
+
+- `content/direct-agent.js` — hardened direct-agent planner: short-lived opaque targets, strict rule compilation, freshness checks, risk classification, and selector-free public inputs.
+- `content/tools-def.js` — `window.PersoToolsDef`: nine core tools, `pxxl_*` dynamic-tool generator, style-profile distiller, `registerTools` helper.
+- `content/webmcp-host.js` — isolated-world host: nonce-authenticated `postMessage` RPC, abort and progress forwarding, live re-sync when records change.
+- `content/webmcp-bridge.js` — MAIN-world bridge: registers tools with `document.modelContext.registerTool` and calls the host over that RPC.
+- `content/content.js` — `window.PersoContentApi` facade used by the host, including atomic direct-plan application with confirmation, cancellation, persistence, and rollback.
+- `manifest.json` — MAIN-world `content_scripts` entry that injects `tools-def.js` and `webmcp-bridge.js`.
+- `playground/index.html` — Playground page "The Daily Everything".
+- `playground/docs.html` — Playground page "Field Notes" (same origin, different path).
+- `playground/assets/extension-shim.js` — `chrome.storage` / `runtime` shim over `localStorage`.
+- `playground/assets/proxy-openrouter.js` — sends planning calls to `/api/plan` instead of OpenRouter from the page.
+- `playground/assets/webmcp-register.js` — first-party `registerTool` of the shared tool set, with dynamic-tool re-sync.
+- `playground/assets/agent-activity.js` — on-page log of tool start/progress/success/error.
+- `playground/assets/playground-boot.js` — personalize button, WebMCP-missing banner, demo clutter wiring.
+- `playground/config/env.js` — playground env (`PLAN_PROXY_ENDPOINT` `/api/plan`, `FEEDBACK_ENDPOINT` `/api/feedback`).
+- `netlify.toml` — publish `playground`, functions in `netlify/functions`.
+- `netlify/functions/plan.mjs` — `/api/plan` proxy to OpenRouter (`OPENROUTER_API_KEY`, optional `OPENROUTER_MODEL`).
+- `netlify/functions/feedback.mjs` — `/api/feedback` accepts POST and returns 204.
+- `scripts/build-playground.mjs` — copies engine and chat-interface files into `playground/`.
+
+**Prior (unchanged engine)**
+
+- Transform planner, plan validator, executor, in-page command palette, and dashboard.
+
+### Tool inventory
+
+| Name | Kind | Description |
+| --- | --- | --- |
+| `inspect_page` | Read | Return a short-lived, one-use page snapshot with opaque target IDs, semantic text, bounds, and computed styles. |
+| `apply_page_plan` | Action | Apply an agent-authored structured plan locally with strict allowlists, fresh-target checks, confirmation, cancellation, rollback, and persistence. No second AI call. |
+| `personalize_page` | Fallback action | For clients that cannot author structured plans, use the configured planning service to generate and apply a reversible personalization from plain English. |
+| `list_personalizations` | Read | List saved personalizations for this page (id, title, enabled/disabled, rule summary). Does not change the page. |
+| `toggle_personalization` | Action | Enable or disable a saved personalization by id. Disabling unregisters tools that personalization created. |
+| `undo_last` | Action | Disable the most recently created active personalization. It stays saved and can be turned back on. |
+| `remove_personalization` | Action | Permanently delete a saved personalization by id. It will not reapply on future visits. |
+| `get_style_profile` | Read | Read-only summary of the user's usual preferences, distilled from saved changes across all sites. |
+| `apply_style_profile` | Fallback action | Apply usual preferences through the configured planning service; capable agents can instead combine `get_style_profile`, `inspect_page`, and `apply_page_plan`. |
+| `pxxl_*` | Action | Dynamic tools generated from enabled shortcut / menu-shortcut capabilities. Each runs that saved shortcut on the page. |
+
+### Architecture
+
+```txt
+Playground (first-party page)
+  page scripts
+  + chrome.storage/runtime shim (localStorage)
+  + /api/plan proxy (Netlify → OpenRouter)
+  → PersoContentApi
+      direct agent: inspect → local compile/validate → executor
+      fallback: OpenRouter planner → validate → executor
+  → document.modelContext.registerTool (direct)
+
+Extension (any http(s) page)
+  MAIN world: tools-def.js + webmcp-bridge.js
+    ⇄ nonce-authenticated postMessage RPC
+       (call / result / abort / progress / record-changed)
+  isolated world: webmcp-host.js
+    → PersoContentApi → direct-agent hardening / fallback planner / executor
+
+Shared
+  content/tools-def.js
+    buildCoreTools, buildDynamicTools, buildStyleProfile, registerTools
+```
+
+### Running the Playground locally
+
+Copy the engine into `playground/`:
+
+```sh
+npm run build:playground
+```
+
+Serve the site and functions (set `OPENROUTER_API_KEY`; `OPENROUTER_MODEL` is optional):
+
+```sh
+OPENROUTER_API_KEY=sk-or-... npx netlify dev
+```
+
+Pages:
+
+- `/` — The Daily Everything
+- `/docs.html` — Field Notes
+
+WebMCP registration needs Chrome 149+ with `chrome://flags/#enable-webmcp-testing`, or the ChatGPT desktop app's in-app browser.
+
+### Testing the extension path
+
+```sh
+npm run build:chromium
+```
+
+Load `dist/chromium` as an unpacked extension, then open any `http` or `https` site. Agents that speak WebMCP see the nine core tools on that page. Capable agents should use `inspect_page` then `apply_page_plan`; OpenRouter is only the fallback. Enabling a shortcut personalization registers a `pxxl_*` tool; disabling that modification live-unregisters it.
+
 ## Load locally in Chrome/Chromium
 
 Build the Chromium extension files:

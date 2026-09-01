@@ -73,7 +73,8 @@ window.PersoOpenRouter = (() => {
     temperature,
     responseFormat,
     referer = "chrome-extension://perso-xxl",
-    title = "Perso XXL"
+    title = "Perso XXL",
+    signal
   }) {
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
@@ -88,7 +89,8 @@ window.PersoOpenRouter = (() => {
         messages,
         temperature,
         responseFormat
-      }))
+      })),
+      signal
     });
 
     const payload = await response.json().catch(() => null);

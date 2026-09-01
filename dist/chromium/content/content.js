@@ -14,9 +14,17 @@ let focusedModId = null;
 /** @type {HTMLElement | null} */
 let modPreviewOverlay = null;
 const pendingFeedbackByMessage = new Map();
+const recordChangeListeners = new Set();
 const extensionApi = globalThis.browser || globalThis.chrome;
 const SITE_RECORD_PREFIX = "siteRecord:";
 const LEGACY_PLAN_PREFIX = "sitePlan:";
+const STRUCTURAL_CAPABILITIES = new Set(["moveElement", "insertElement", "cloneElement", "swapElements"]);
+const SHORTCUT_CAPABILITIES = new Set(["shortcutButton", "menuShortcut"]);
+const INTENSITY_HINTS = {
+  subtle: "Keep the changes subtle and conservative, preferring small visual tweaks over large structural edits.",
+  standard: "Apply a balanced, standard amount of change that is clearly useful without being extreme.",
+  bold: "Be bold and thorough — make the requested changes clearly visible."
+};
 const FEEDBACK_ENDPOINT = window.PersoEnv?.FEEDBACK_ENDPOINT || "http://localhost:8787/feedback";
 const INSTALL_ID_KEY = "persoInstallId";
 
@@ -131,6 +139,7 @@ function isRelevantPageMutation(mutation) {
 function isPersoNode(node) {
   return node.id?.startsWith("perso-xxl") ||
     node.closest?.("#perso-xxl-panel") ||
+    node.closest?.("[data-perso-xxl-ui]") ||
     node.hasAttribute?.("data-perso-xxl-rule");
 }
 
@@ -490,8 +499,18 @@ function attachAssetsToPlan(plan, uploaded) {
   };
 }
 
-async function generateAndApplyPlan({ prompt, tokens }) {
-  const selections = tokensToSelections(tokens);
+async function generateAndApplyPlan({
+  prompt,
+  tokens = [],
+  selections = [],
+  signal,
+  onProgress,
+  requireConfirmation = false
+}) {
+  throwIfAborted(signal);
+
+  const tokenSelections = tokensToSelections(tokens);
+  const resolvedSelections = tokenSelections.length ? tokenSelections : selections;
   const uploadedAsset = await resolveUploadedAsset(tokens);
   const remoteAsset = uploadedAsset ? null : await resolveRemoteImageAsset(prompt);
   const selectedAsset = uploadedAsset || remoteAsset;
@@ -501,25 +520,30 @@ async function generateAndApplyPlan({ prompt, tokens }) {
     throw new Error("Attach the image file instead of typing its local path.");
   }
 
+  throwIfAborted(signal);
+  emitProgress(onProgress, "reading-page");
   const pageContext = buildPageContext();
   const pageDom = window.PersoDomContext.collectPageDom();
 
   log.info("generation.started", {
     promptLength: prompt.length,
     pageContext,
-    selectionCount: selections.length,
+    selectionCount: resolvedSelections.length,
     pageNodeCount: pageDom.nodeCount
   });
 
   const summaries = summariesFromUploaded(selectedAsset);
 
+  throwIfAborted(signal);
+  emitProgress(onProgress, "planning");
   let plans = await generatePlansForRequest({
     prompt,
     pageContext,
     pageDom,
-    selections,
+    selections: resolvedSelections,
     availableAssets: summaries,
-    selectedAsset
+    selectedAsset,
+    signal
   });
 
   log.info("generation.received", {
@@ -528,17 +552,41 @@ async function generateAndApplyPlan({ prompt, tokens }) {
     targetRefs: plans.flatMap((plan) => Object.keys(plan.targetMap || {}))
   });
 
+  throwIfAborted(signal);
+  emitProgress(onProgress, "validating");
   plans = await validateAndRepairPlans({
     plans,
     prompt,
     pageContext,
     pageDom,
-    selections,
+    selections: resolvedSelections,
     summaries,
-    selectedAsset
+    selectedAsset,
+    signal
   });
 
   log.info("generation.validation.passed", { planCount: plans.length });
+
+  throwIfAborted(signal);
+  if (requireConfirmation && plans.some(planHasStructuralRules)) {
+    emitProgress(onProgress, "awaiting-confirmation");
+    const approved = await requestPlanConfirmation(plans, {
+      level: "high",
+      summary: "structural page changes",
+      reasons: ["moves, inserts, clones, replaces, or swaps page content"]
+    }, signal);
+    if (!approved) {
+      log.info("generation.confirmation.rejected", { planCount: plans.length });
+      return {
+        ok: false,
+        cancelled: true,
+        summary: "The user declined the structural changes. Nothing was applied."
+      };
+    }
+  }
+
+  throwIfAborted(signal);
+  emitProgress(onProgress, "applying");
 
   const modifications = plans.map((plan) => buildModification({
     prompt: plan.sourcePrompt || prompt,
@@ -568,10 +616,23 @@ async function generateAndApplyPlan({ prompt, tokens }) {
     profileNotes: prompt,
     [getSiteRecordKey()]: currentSiteRecord
   });
+  notifyRecordChange(currentSiteRecord);
   log.info("storage.saved", { key: getSiteRecordKey(), hasProfileNotes: Boolean(prompt), modificationCount: currentSiteRecord.modifications.length });
   refreshConversationPreview();
   applyCurrentPlan();
   log.info("panel.task.finished", { message: "Plan generated.", modificationCount: modifications.length });
+
+  return {
+    ok: true,
+    summary: buildPersonalizeSummary(modifications),
+    modifications: modifications.map((modification) => ({
+      id: modification.id,
+      title: modification.title,
+      enabled: modification.enabled !== false,
+      ruleCount: modification.plan?.rules?.length || 0,
+      ruleSummary: summarizeRules(modification.plan)
+    }))
+  };
 }
 
 async function generatePlansForRequest(options) {
@@ -591,11 +652,13 @@ async function validateAndRepairPlans({
   pageDom,
   selections,
   summaries,
-  selectedAsset
+  selectedAsset,
+  signal
 }) {
   const repaired = [];
 
   for (const plan of plans) {
+    throwIfAborted(signal);
     const originalTitle = plan.title;
     let nextPlan = attachAssetsToPlan(plan, selectedAsset);
     let validation = window.PersoAiClient.validateTransformPlan(nextPlan);
@@ -610,7 +673,8 @@ async function validateAndRepairPlans({
         selections,
         availableAssets: summaries,
         previousPlan: nextPlan,
-        validationErrors: validation.errors
+        validationErrors: validation.errors,
+        signal
       });
       nextPlan = attachAssetsToPlan(nextPlan, selectedAsset);
       nextPlan.title = nextPlan.title || originalTitle;
@@ -636,6 +700,270 @@ async function validateAndRepairPlans({
   }
 
   return repaired;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
+}
+
+function emitProgress(onProgress, stage) {
+  if (typeof onProgress !== "function") return;
+  try {
+    onProgress(stage);
+  } catch (error) {
+    log.warn("content.api.progress.failed", { stage, error: error.message || String(error) });
+  }
+}
+
+function appendIntensityHint(prompt, intensity) {
+  const hint = INTENSITY_HINTS[String(intensity || "").toLowerCase()];
+  if (!hint) return prompt;
+  return `${prompt}\n\n${hint}`;
+}
+
+function planHasStructuralRules(plan) {
+  return (plan?.rules || []).some((rule) => {
+    if (rule?.placement === "replace") return true;
+    return rule?.type === "capability" && STRUCTURAL_CAPABILITIES.has(rule.capability);
+  });
+}
+
+function requestPlanConfirmation(plans, risk = {}, signal) {
+  return new Promise((resolve) => {
+    document.getElementById("perso-xxl-confirm-card")?.remove();
+
+    const card = document.createElement("aside");
+    card.id = "perso-xxl-confirm-card";
+    card.setAttribute("data-perso-xxl-ui", "true");
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-labelledby", "perso-xxl-confirm-title");
+    Object.assign(card.style, {
+      position: "fixed",
+      right: "24px",
+      bottom: "24px",
+      zIndex: "2147483646",
+      width: "min(360px, calc(100vw - 32px))",
+      boxSizing: "border-box",
+      padding: "18px 18px 14px",
+      background: "#1a1418",
+      color: "#f5f0f2",
+      border: "1px solid rgba(255, 255, 255, 0.1)",
+      borderRadius: "16px",
+      boxShadow: "0 18px 48px rgba(0, 0, 0, 0.42)",
+      fontFamily: "Inter, system-ui, sans-serif"
+    });
+
+    const title = document.createElement("p");
+    title.id = "perso-xxl-confirm-title";
+    title.textContent = "Approve agent changes?";
+    Object.assign(title.style, {
+      margin: "0 0 8px",
+      fontSize: "15px",
+      fontWeight: "700",
+      lineHeight: "1.3"
+    });
+
+    const note = document.createElement("p");
+    const riskLabel = risk.level === "high" ? "Higher-risk" : "Sensitive";
+    note.textContent = `${riskLabel} change: ${risk.summary || "this plan needs your approval"}. Nothing will be saved unless you approve.`;
+    Object.assign(note.style, {
+      margin: "0 0 12px",
+      fontSize: "13px",
+      lineHeight: "1.45",
+      color: "rgba(245, 240, 242, 0.78)"
+    });
+
+    const list = document.createElement("ul");
+    Object.assign(list.style, {
+      margin: "0 0 14px",
+      padding: "0 0 0 18px",
+      fontSize: "13px",
+      lineHeight: "1.45"
+    });
+    (plans || []).forEach((plan) => {
+      const item = document.createElement("li");
+      item.textContent = `${plan?.title || "Modification"} — ${summarizeRules(plan)}`;
+      list.appendChild(item);
+    });
+    (risk.reasons || []).forEach((reason) => {
+      const item = document.createElement("li");
+      item.textContent = `Why approval is required: ${reason}`;
+      list.appendChild(item);
+    });
+
+    const actions = document.createElement("div");
+    Object.assign(actions.style, {
+      display: "flex",
+      justifyContent: "flex-end",
+      gap: "8px"
+    });
+
+    const rejectBtn = document.createElement("button");
+    rejectBtn.type = "button";
+    rejectBtn.textContent = "Reject";
+    Object.assign(rejectBtn.style, {
+      appearance: "none",
+      border: "1px solid rgba(255, 255, 255, 0.14)",
+      background: "transparent",
+      color: "#f5f0f2",
+      borderRadius: "10px",
+      padding: "8px 12px",
+      font: "600 13px/1.2 Inter, system-ui, sans-serif",
+      cursor: "pointer"
+    });
+
+    const approveBtn = document.createElement("button");
+    approveBtn.type = "button";
+    approveBtn.textContent = "Approve";
+    Object.assign(approveBtn.style, {
+      appearance: "none",
+      border: "0",
+      background: "#ff2d7a",
+      color: "#fff",
+      borderRadius: "10px",
+      padding: "8px 12px",
+      font: "600 13px/1.2 Inter, system-ui, sans-serif",
+      cursor: "pointer"
+    });
+
+    actions.append(rejectBtn, approveBtn);
+    card.append(title, note, list, actions);
+    document.documentElement.appendChild(card);
+
+    const previouslyFocused = document.activeElement;
+    let settled = false;
+    const timeoutId = window.setTimeout(() => finish(false), 120000);
+
+    function onAbort() {
+      finish(false);
+    }
+
+    function finish(approved) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener?.("abort", onAbort);
+      document.removeEventListener("keydown", onKeyDown, true);
+      card.remove();
+      previouslyFocused?.focus?.();
+      resolve(approved);
+    }
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      }
+    }
+
+    rejectBtn.addEventListener("click", () => finish(false));
+    approveBtn.addEventListener("click", () => finish(true));
+    document.addEventListener("keydown", onKeyDown, true);
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+    rejectBtn.focus();
+    if (signal?.aborted) finish(false);
+  });
+}
+
+function summarizeRules(plan) {
+  const rules = Array.isArray(plan?.rules) ? plan.rules : [];
+  const counts = {
+    hide: 0,
+    show: 0,
+    dim: 0,
+    restyle: 0,
+    css: 0,
+    attribute: 0,
+    scrollLock: 0,
+    shortcutButton: 0,
+    menuShortcut: 0,
+    moveElement: 0,
+    insertElement: 0,
+    cloneElement: 0,
+    swapElements: 0,
+    other: 0
+  };
+
+  rules.forEach((rule) => {
+    if (rule?.type === "visibility") {
+      if (rule.action === "show") counts.show += 1;
+      else if (rule.action === "dim") counts.dim += 1;
+      else counts.hide += 1;
+      return;
+    }
+    if (rule?.type === "style") {
+      counts.restyle += 1;
+      return;
+    }
+    if (rule?.type === "css") {
+      counts.css += 1;
+      return;
+    }
+    if (rule?.type === "attribute") {
+      counts.attribute += 1;
+      return;
+    }
+    if (rule?.type === "capability" && typeof counts[rule.capability] === "number") {
+      counts[rule.capability] += 1;
+      return;
+    }
+    counts.other += 1;
+  });
+
+  const parts = [];
+  if (counts.hide) parts.push(counts.hide === 1 ? "hide 1 element" : `hide ${counts.hide} elements`);
+  if (counts.show) parts.push(counts.show === 1 ? "show 1 element" : `show ${counts.show} elements`);
+  if (counts.dim) parts.push(counts.dim === 1 ? "dim 1 element" : `dim ${counts.dim} elements`);
+  if (counts.restyle) parts.push(counts.restyle === 1 ? "restyle 1 element" : `restyle ${counts.restyle} elements`);
+  if (counts.css) parts.push(counts.css === 1 ? "1 page CSS rule" : `${counts.css} page CSS rules`);
+  if (counts.attribute) parts.push(counts.attribute === 1 ? "change 1 attribute" : `change ${counts.attribute} attributes`);
+  if (counts.shortcutButton) parts.push(counts.shortcutButton === 1 ? "add shortcut button" : `add ${counts.shortcutButton} shortcut buttons`);
+  if (counts.menuShortcut) parts.push(counts.menuShortcut === 1 ? "add menu shortcut" : `add ${counts.menuShortcut} menu shortcuts`);
+  if (counts.moveElement) parts.push(counts.moveElement === 1 ? "move element" : `move ${counts.moveElement} elements`);
+  if (counts.insertElement) parts.push(counts.insertElement === 1 ? "insert content" : `insert ${counts.insertElement} pieces of content`);
+  if (counts.cloneElement) parts.push(counts.cloneElement === 1 ? "clone element" : `clone ${counts.cloneElement} elements`);
+  if (counts.swapElements) parts.push(counts.swapElements === 1 ? "swap elements" : `swap ${counts.swapElements} element pairs`);
+  if (counts.scrollLock) parts.push("lock scrolling");
+  if (counts.other) parts.push(counts.other === 1 ? "1 other rule" : `${counts.other} other rules`);
+
+  if (!rules.length) return "no rules";
+  return `${rules.length} ${rules.length === 1 ? "rule" : "rules"}: ${parts.join(", ") || "mixed changes"}`;
+}
+
+function buildPersonalizeSummary(modifications) {
+  const count = modifications.length;
+  const noun = count === 1 ? "personalization" : "personalizations";
+  const items = modifications.map((modification) => (
+    `"${modification.title}" (${summarizeRules(modification.plan)})`
+  ));
+  return `Applied ${count} ${noun}: ${items.join(", ")}. Changes are saved and will reapply on every visit. Say "undo" anytime to revert.`;
+}
+
+function listCapabilityRules(modification) {
+  return (modification?.plan?.rules || [])
+    .filter((rule) => rule?.type === "capability" && SHORTCUT_CAPABILITIES.has(rule.capability))
+    .map((rule) => ({
+      ruleId: rule.id || "",
+      capability: rule.capability,
+      label: rule.label || rule.actionText || modification.title,
+      actionText: rule.actionText || ""
+    }));
+}
+
+function snapshotModification(modification) {
+  return {
+    id: modification.id,
+    title: modification.title,
+    enabled: modification.enabled !== false,
+    createdAt: modification.createdAt,
+    sourcePrompt: modification.sourcePrompt || "",
+    ruleCount: modification.plan?.rules?.length || 0,
+    ruleSummary: summarizeRules(modification.plan),
+    capabilities: listCapabilityRules(modification)
+  };
 }
 
 async function revertAppliedPlan() {
@@ -861,6 +1189,18 @@ function remapElementAssetRefs(element, prefix) {
 async function saveSiteRecord(record) {
   currentSiteRecord = normalizeSiteRecord(record);
   await extensionApi.storage.local.set({ [getSiteRecordKey()]: currentSiteRecord });
+  notifyRecordChange(currentSiteRecord);
+}
+
+function notifyRecordChange(record) {
+  const snapshot = normalizeSiteRecord(record);
+  recordChangeListeners.forEach((cb) => {
+    try {
+      cb(snapshot);
+    } catch (error) {
+      log.warn("content.api.record_change.failed", { error: error.message || String(error) });
+    }
+  });
 }
 
 async function setModificationEnabled(id, enabled, { refresh = true } = {}) {
@@ -1515,6 +1855,7 @@ extensionApi.storage.onChanged?.addListener((changes, area) => {
   if (area !== "local" || !changes[getSiteRecordKey()]) return;
   currentSiteRecord = normalizeSiteRecord(changes[getSiteRecordKey()].newValue);
   currentPlan = composeEnabledPlan(currentSiteRecord);
+  notifyRecordChange(currentSiteRecord);
   refreshConversationPreview();
   if (focusedModId) {
     const modification = getFocusedModification();
@@ -1531,6 +1872,218 @@ extensionApi.storage.onChanged?.addListener((changes, area) => {
   applyCurrentPlan();
 });
 
+async function personalize(opts = {}) {
+  const prompt = String(opts.prompt || "").trim();
+  if (!prompt) throw new Error("Type what you want to change first.");
+  return generateAndApplyPlan({
+    prompt: appendIntensityHint(prompt, opts.intensity),
+    tokens: [],
+    selections: [],
+    signal: opts.signal,
+    onProgress: opts.onProgress,
+    requireConfirmation: Boolean(opts.requireConfirmation)
+  });
+}
+
+function inspectPage(opts = {}) {
+  if (!window.PersoDirectAgent?.inspectPage) {
+    throw new Error("Direct agent inspection is unavailable on this page.");
+  }
+  return window.PersoDirectAgent.inspectPage(opts);
+}
+
+async function applyDirectPlan(opts = {}) {
+  // Transport controls belong to the trusted bridge context, not to the
+  // agent-authored plan that the adversarial validator examines below.
+  const { signal, onProgress, ...planInput } = opts;
+  throwIfAborted(signal);
+  emitProgress(onProgress, "checking-targets");
+
+  if (!window.PersoDirectAgent?.preparePlan) {
+    throw new Error("Direct agent planning is unavailable on this page.");
+  }
+
+  const prepared = window.PersoDirectAgent.preparePlan(planInput);
+  const validation = window.PersoAiClient.validateTransformPlan(prepared.plan);
+  if (!validation.ok) {
+    throw new Error(`Direct plan was refused: ${validation.errors.join(" ")}`);
+  }
+
+  throwIfAborted(signal);
+  if (prepared.risk.requiresConfirmation) {
+    emitProgress(onProgress, "awaiting-confirmation");
+    const approved = await requestPlanConfirmation([prepared.plan], prepared.risk, signal);
+    if (!approved) {
+      throwIfAborted(signal);
+      return {
+        ok: false,
+        cancelled: true,
+        summary: "The user declined the sensitive agent changes. Nothing was applied or saved."
+      };
+    }
+  }
+
+  throwIfAborted(signal);
+  prepared.revalidate();
+  emitProgress(onProgress, "applying");
+
+  const previousRecord = normalizeSiteRecord(currentSiteRecord);
+  const previousPlan = composeEnabledPlan(previousRecord);
+  const modification = buildModification({
+    prompt: prepared.plan.sourcePrompt,
+    plan: prepared.plan,
+    title: prepared.plan.title
+  });
+  const now = new Date().toISOString();
+  const nextRecord = {
+    ...previousRecord,
+    modifications: [...previousRecord.modifications, modification],
+    conversations: [
+      ...previousRecord.conversations,
+      {
+        id: createId("msg"),
+        role: "assistant",
+        text: `Applied direct agent plan: ${modification.title}`,
+        createdAt: now,
+        modificationId: modification.id
+      }
+    ],
+    lastUpdatedAt: now
+  };
+  const nextPlan = composeEnabledPlan(nextRecord);
+  let domChanged = false;
+  let storageCommitted = false;
+
+  try {
+    suppressMutationApplyUntil = Date.now() + 1500;
+    window.PersoExecutor.revertPlan();
+    currentPlan = nextPlan;
+    const result = window.PersoExecutor.applyPlan(nextPlan);
+    domChanged = true;
+
+    if (!result || result.totalMatched < 1) {
+      throw new Error("Fresh targets resolved to no elements during application. Re-inspect the page and try again.");
+    }
+
+    throwIfAborted(signal);
+    emitProgress(onProgress, "saving");
+    await extensionApi.storage.local.set({ [getSiteRecordKey()]: nextRecord });
+    storageCommitted = true;
+    throwIfAborted(signal);
+
+    currentSiteRecord = nextRecord;
+    currentPlan = nextPlan;
+    lastApplyResult = { ...result, appliedAt: new Date().toISOString() };
+    zeroMatchRetryCount = 0;
+    notifyRecordChange(currentSiteRecord);
+    refreshConversationPreview();
+
+    return {
+      ok: true,
+      summary: buildPersonalizeSummary([modification]),
+      modification: snapshotModification(modification),
+      risk: prepared.risk,
+      matchedElements: result.totalMatched
+    };
+  } catch (error) {
+    if (storageCommitted) {
+      try {
+        await extensionApi.storage.local.set({ [getSiteRecordKey()]: previousRecord });
+      } catch (rollbackError) {
+        log.error("direct.storage.rollback.failed", { error: rollbackError?.message || String(rollbackError) });
+      }
+    }
+    if (domChanged) {
+      suppressMutationApplyUntil = Date.now() + 1500;
+      window.PersoExecutor.revertPlan();
+      currentPlan = previousPlan;
+      if (previousPlan) window.PersoExecutor.applyPlan(previousPlan);
+    }
+    currentSiteRecord = previousRecord;
+    currentPlan = previousPlan;
+    throw error;
+  }
+}
+
+function listModifications() {
+  return normalizeSiteRecord(currentSiteRecord).modifications.map(snapshotModification);
+}
+
+async function setModificationEnabledApi(id, enabled) {
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  const modification = currentSiteRecord.modifications.find((entry) => entry.id === id);
+  if (!modification) throw new Error("Modification not found.");
+  const nextEnabled = Boolean(enabled);
+  await setModificationEnabled(id, nextEnabled);
+  const updated = normalizeSiteRecord(currentSiteRecord).modifications.find((entry) => entry.id === id);
+  return { ok: true, id, enabled: nextEnabled, title: updated?.title || modification.title };
+}
+
+async function removeModification(id) {
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  const modification = currentSiteRecord.modifications.find((entry) => entry.id === id);
+  const title = modification?.title || null;
+  await deleteModification(id);
+  return { ok: true, removed: title };
+}
+
+async function undoLast() {
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  const enabled = currentSiteRecord.modifications.filter((modification) => modification.enabled);
+  if (!enabled.length) return { ok: true, undone: null };
+
+  enabled.sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+  const target = enabled[0];
+  await setModificationEnabled(target.id, false);
+  return { ok: true, undone: { id: target.id, title: target.title } };
+}
+
+async function revertAll() {
+  currentSiteRecord = normalizeSiteRecord(currentSiteRecord);
+  const count = currentSiteRecord.modifications.filter((modification) => modification.enabled).length;
+  await revertAppliedPlan();
+  return { ok: true, count };
+}
+
+async function invokeCapability(modId, ruleId) {
+  const sanitizedModId = String(modId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const suffix = `_${String(ruleId || "")}`;
+  const button = Array.from(document.querySelectorAll("[data-perso-xxl-shortcut]")).find((element) => {
+    const value = element.getAttribute("data-perso-xxl-shortcut") || "";
+    return Boolean(sanitizedModId) && Boolean(ruleId) && value.endsWith(suffix) && value.includes(sanitizedModId);
+  });
+
+  if (!button) {
+    return {
+      ok: false,
+      message: "Shortcut button is not present on the page. Enable the personalization and wait for it to apply, then try again."
+    };
+  }
+
+  button.click();
+  const label = button.textContent?.trim() || String(ruleId);
+  return { ok: true, message: `Clicked the "${label}" shortcut.` };
+}
+
+function getSiteRecord() {
+  return normalizeSiteRecord(currentSiteRecord);
+}
+
+function onRecordChange(cb) {
+  if (typeof cb !== "function") return () => {};
+  recordChangeListeners.add(cb);
+  return () => {
+    recordChangeListeners.delete(cb);
+  };
+}
+
+async function getAllSiteRecords() {
+  const state = await extensionApi.storage.local.get(null);
+  return Object.entries(state || {})
+    .filter(([key]) => key.startsWith(SITE_RECORD_PREFIX))
+    .map(([key, value]) => ({ key, record: normalizeSiteRecord(value) }));
+}
+
 initExtensionHost();
 panel = createPanel();
 document.documentElement.appendChild(panel);
@@ -1538,3 +2091,18 @@ attachPanelInteractions();
 attachModFocusInteractions();
 log.info("panel.created");
 loadPanelState();
+
+window.PersoContentApi = {
+  inspectPage,
+  applyDirectPlan,
+  personalize,
+  listModifications,
+  setModificationEnabled: setModificationEnabledApi,
+  removeModification,
+  undoLast,
+  revertAll,
+  invokeCapability,
+  getSiteRecord,
+  onRecordChange,
+  getAllSiteRecords
+};
