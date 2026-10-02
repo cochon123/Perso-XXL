@@ -7,6 +7,8 @@ const rootDir = resolve(import.meta.dirname, "..");
 describe("Perso content runtime in happy-dom", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    delete window.PersoDemo;
+    delete window.PersoExtension;
     window.PersoLogger = {
       debug() {},
       info() {},
@@ -84,6 +86,43 @@ describe("Perso content runtime in happy-dom", () => {
     const context = window.PersoDomContext.collectPageDom({ maxNodes: 20 });
 
     expect(context.nodes.some((node) => node.classes.includes("hidden-card"))).toBe(false);
+  });
+
+  it("allows the landing demo to target its embedded ai input", () => {
+    document.body.innerHTML = `
+      <main>
+        <section class="productivity-ai-wrap">
+          <div class="preview-stack">
+            <div class="ai-input" id="ai-input" data-state="idle">
+              <div id="prompt-editor" role="textbox">Describe what you want to change</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    `;
+    window.PersoDemo = { enabled: true };
+    installRectMock();
+
+    const context = window.PersoDomContext.collectPageDom({ maxNodes: 20 });
+
+    expect(context.nodes.some((node) => node.id === "ai-input")).toBe(true);
+  });
+
+  it("keeps extension ai input chrome out of normal page context", () => {
+    document.body.innerHTML = `
+      <main>
+        <article class="content-card">Page content</article>
+        <div class="ai-input" id="ai-input" data-state="idle">
+          <div id="prompt-editor" role="textbox">Extension prompt</div>
+        </div>
+      </main>
+    `;
+    installRectMock();
+
+    const context = window.PersoDomContext.collectPageDom({ maxNodes: 20 });
+
+    expect(context.nodes.some((node) => node.classes.includes("content-card"))).toBe(true);
+    expect(context.nodes.some((node) => node.id === "ai-input")).toBe(false);
   });
 
   it("applies and reverts visibility, style, and inserted elements", () => {
