@@ -2,6 +2,59 @@
 
 Perso XXL is a Chrome/Chromium and Firefox extension that generates and applies AI-personalized website layout plans through OpenRouter.
 
+<p align="center">
+  <img src="landing/perso-xxl-logo.png" alt="Perso XXL logo" width="120" />
+</p>
+
+<img src="docs/media/landing-hero.webp" alt="Perso XXL landing page hero: Make every app truly yours" width="960" />
+
+*Landing page. The floating cards are the nature and My Little Pony theme images.*
+
+<img src="docs/media/command-palette.png" alt="Perso XXL command palette open on a web page, with the prompt Hide the sidebar" width="960" />
+
+*Command palette on a web page, opened from the extension. The page underneath is the site being edited.*
+
+Theme images from `landing/pictures`, as used on the landing page:
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="landing/pictures/nature_yt.webp" alt="Nature theme on a YouTube-style page, used as a floating card in the landing hero" width="420" />
+      <br />
+      <em>Nature theme. Floating card in the landing hero.</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="landing/pictures/my-little-pony_yt.webp" alt="My Little Pony theme on a YouTube-style page, used as a floating card in the landing hero" width="420" />
+      <br />
+      <em>My Little Pony theme. Floating card in the landing hero.</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="landing/pictures/Boring_yt.webp" alt="Default YouTube-style layout, the before state in the landing comparison" width="420" />
+      <br />
+      <em>Default layout. Before state in the landing comparison.</em>
+    </td>
+    <td align="center">
+      <img src="landing/pictures/One-piece_yt.webp" alt="One Piece theme, the after state in the landing comparison" width="420" />
+      <br />
+      <em>One Piece theme. After state in the landing comparison.</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="landing/pictures/space_yt.webp" alt="Space theme on a YouTube-style page, from the landing card stack" width="420" />
+      <br />
+      <em>Space theme. Card in the landing personalization section.</em>
+    </td>
+    <td align="center">
+      <img src="landing/pictures/tech_yt.webp" alt="Tech theme on a YouTube-style page, from the landing card stack" width="420" />
+      <br />
+      <em>Tech theme. Card in the landing personalization section.</em>
+    </td>
+  </tr>
+</table>
+
 ## What is implemented
 
 - MV3 extension scaffold.
